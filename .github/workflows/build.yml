@@ -1,0 +1,54 @@
+# build -- the loader links, against the toolchain it floats on.
+#
+# This is a FREESTANDING consumer: it has no crts0.s and no kernel behind it,
+# so every external symbol the compiler names is one src/crt.s has to define
+# (SS, the stack segment a frame reference relocates against).  A compiler
+# change that adds one is invisible here until somebody builds -- and once was,
+# for days.  The toolchain runs the same link from its own side on every push;
+# this is the other direction, for a change made here.
+#
+# It links, and it checks the size ceilings the loader has to fit; it boots
+# nothing.  Booting needs an image, an OS and an emulator, none of which this
+# repository has, and none of which is needed to see an unresolved symbol.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: kboot }
+      # DEPS names one edge and it is floating: the loader is built against the
+      # toolchain as it is now, which is the whole point of the check.
+      - uses: actions/checkout@v4
+        with:
+          repository: kdedon/commodore-900-toolchain
+          path: toolchain
+          token: ${{ secrets.C900_CI_TOKEN || github.token }}
+
+      - name: The compiler
+        working-directory: toolchain
+        run: make all
+
+      # Set, never searched: a job that depended on directory adjacency breaks
+      # the first time a runner image moves its checkouts.  The search has its
+      # own test in resolver-isolation.yml.
+      - name: Link the loader
+        working-directory: kboot
+        env:
+          C900_TOOLCHAIN: ${{ github.workspace }}/toolchain
+        run: make
+
+      - name: The host tests
+        working-directory: kboot
+        run: make test
+
+      - name: The link map, when it does not
+        if: failure()
+        working-directory: kboot
+        run: cat build/build.log build/obj/link.txt 2>/dev/null || true

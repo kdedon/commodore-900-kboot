@@ -1,0 +1,30 @@
+# kboot.cfg -- copy to the boot partition beside the loader and edit.
+# It is read at most 1024 bytes, comments included, so keep it short.
+# The format reference, and every limit, is in this repository's README.
+
+# geom <cyl> <heads> <spt> <precomp>
+geom 1024 7 17 512
+
+# The default layout, before any `os' line: every entry inherits it whole.
+# part <slot> <start> <blocks>, then swap <slot> <bot> <top>.
+part 0 0 136
+part 1 10336 13472
+part 3 31008 7000
+part 4 136 10200
+part 15 0 121856
+swap 3 2904 7000
+
+# bflag <NAME> <bit> -- boot-flag names of the kernel below, for the menu.
+bflag SINGLE 1
+
+# os <label> <base-block> <kernel-file> [part]
+os OpenCoherent-3.5 136 coherent part
+# flags <NAME> ... -- this entry boots with BF_SINGLE set: single user.
+flags SINGLE
+
+# No `part': this entry asks for no handoff, so it is loaded and started in
+# silence.  Add the flag if the system it names grows a bootinfo block.
+os CPM-8000 58624 cpm.sys
+
+timeout 5
+default 1
