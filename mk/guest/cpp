@@ -1,0 +1,29 @@
+#!/bin/sh
+# mk/guest/cpp -- the preprocessor, run as a guest process.  Output on stdout.
+#
+#	cpp [-P] [-C] [-Dname[=val]] [-Uname] [-Idir] FILE > OUT
+#
+# The same cc0 the C path uses, in its preprocessor-only mode: the variant bits
+# VCPP (byte 3, 0x40) and, for -P, VCPPE (0x20), which suppresses the `#line'
+# markers the assembler rejects.  This exists for the .s sources; C never goes
+# through it.
+. "$(dirname "$0")/common.sh"
+guest_need
+b3=64					# VCPP
+opts=""; in=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-P|-E)	b3=$((b3 | 32));;	# VCPPE
+	-C)	b3=$((b3 | 128));;	# VCPPC
+	-D|-U|-I) opts="$opts $1$2"; shift;;
+	-D*|-U*|-I*) opts="$opts $1";;
+	-*)	guest_die "unknown option $1";;
+	*)	[ -z "$in" ] || guest_die "one input file at a time (got $in and $1)"
+		in=$1;;
+	esac
+	shift
+done
+[ -n "$in" ] || guest_die "no input file"
+# `-' is how this mode spells standard output; nothing is written to a file, so
+# a failure leaves nothing behind to clean up.
+guest_run lib/cc0 "$(printf '000000%02x0000' "$b3")" "$in" - $opts

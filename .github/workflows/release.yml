@@ -1,0 +1,78 @@
+# release -- on a v* tag, publish what somebody installs: the loader and a
+# configuration to copy.
+#
+# The loader is built HERE rather than taken from the build workflow's run: a
+# release asset has to come from the tag it claims to be, and an artifact
+# downloaded across workflows is one more place the two can differ.  It is the
+# same recipe, so the bytes are the same bytes.
+#
+# BUILT WITH THE SELF-HOSTED COMPILER, which is the point of shipping it at
+# all: what a person installs on a Commodore 900 is what that machine's own
+# compiler produced, not what gcc cross-produced for it.
+#
+# The size check is not decoration.  The loader is read by the ROM into a fixed
+# span, and a build that links cleanly can still be too large to load; `make
+# size' is what says so, and it runs before anything is published.
+name: release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # to attach assets to the release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The compiler dist
+        run: make deps DEP=ours
+      - name: The emulator
+        run: make deps DEP=emu
+
+      # Which compiler produced the binary being published, in the run log and
+      # in the release notes: for a shipped artifact "what built this" must be
+      # answerable later, when the workspace is gone.
+      - name: What is in it
+        id: cc
+        run: |
+          cat deps/env-ours/.provenance
+          {
+            echo 'notes<<EOF'
+            echo 'Built with the self-hosted MWC Z8001 compiler, run under the emulator.'
+            echo
+            echo '```'
+            cat deps/env-ours/.provenance
+            echo '```'
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Link the loader
+        env:
+          C900_ENV: ${{ github.workspace }}/deps/env-ours
+          C900_EMU: ${{ github.workspace }}/deps/commodore-900-emulator/bin/c900
+        run: make COMPILER=ours
+
+      - name: It fits the span the ROM loads it into
+        env:
+          C900_ENV: ${{ github.workspace }}/deps/env-ours
+          C900_EMU: ${{ github.workspace }}/deps/commodore-900-emulator/bin/c900
+        run: make size
+
+      - name: The host tests
+        run: make test
+
+      # kboot.cfg.sample is shipped beside the loader because a loader with no
+      # configuration boots nothing, and the sample is the documented format.
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/kboot
+            cfg/kboot.cfg.sample
+          body: ${{ steps.cc.outputs.notes }}
+          fail_on_unmatched_files: true

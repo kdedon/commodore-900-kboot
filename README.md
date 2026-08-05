@@ -11,15 +11,27 @@ ROM loads it, then it:
 
 ## Building
 
-Needs `make`, `cpp`, a POSIX shell with `awk` and `od`, and the
-`commodore-900-toolchain` Z8001 cross compiler — no other language runtime.
-`tools/toolchain.sh` finds the compiler from `$C900_TOOLCHAIN`, from
-`$Z8001_TOOLCHAIN`, or from `$PATH`; it does not guess at a sibling checkout, so
-one of those must be set.
+Needs `make`, a POSIX shell with `awk` and `od`, and a Z8001 compiler — no
+other language runtime. Which compiler is a selection, `COMPILER=`:
 
-    C900_TOOLCHAIN=/path/to/commodore-900-toolchain make        # -> build/kboot
-    C900_TOOLCHAIN=/path/to/commodore-900-toolchain make size
-    make clean                                                  # build/ and tests/build/
+| flavour | what it is | what it needs |
+|---|---|---|
+| `ours` (default) | the self-hosted compiler: Z8001 `cc0/cc1/cc2`, `as`, `ld`, one guest process per pass under the emulator | the `ours` compiler dist and the emulator, both in `DEPS` |
+| `cross` | the same compiler built for this host with gcc | a built `commodore-900-toolchain` checkout |
+
+Both produce the same object, byte for byte; `cross` is many times faster and
+is what a developer iterating wants.
+
+    make deps                     # place what DEPS pins: compiler, emulator
+    make                          # -> build/kboot
+    make COMPILER=cross           # the same, with the gcc-built cross compiler
+    make compiler-info            # what the flavour resolved to, or why not
+    make size
+    make clean                    # build/ and tests/build/
+
+Nothing is searched for behind your back: a variable wins (`C900_ENV`,
+`C900_EMU`, `C900_TOOLCHAIN`), and when nothing resolves the build refuses
+naming the variable and the paths it tried.
 
 `make size` reports two independent budgets, either of which can fail the build:
 the `TCOPY`/`DCOPY` segment copy caps `src/crt.s` imposes on itself, and the
@@ -33,7 +45,8 @@ as a larger copy overruns the ROM's live segment-1 data. Drop features instead.
 is the entry point: it runs the host test suite (`make -C tests`) and the
 mutation gate (`make -C tests mutate`), which checks that those tests fail when
 they should. Both exercise the config parser and the menu state machine on the
-host, need no cross toolchain, and take under a second. See `tests/README.md`.
+host with the host `cc`, need no Z8001 compiler at all, and take under a
+second. See `tests/README.md`.
 
 Loader behaviour itself cannot be tested here: it needs a machine emulator or
 real hardware, neither of which is part of this repository.

@@ -10,13 +10,24 @@
 # dependency is still refused by name where it is wanted.  Nothing here is
 # consulted at build time.
 #
-# DEPS is `name kind url ref [asset]', one line per edge, # for a comment:
+# DEPS is `name kind url ref [asset] [dest]', one line per edge, # for a
+# comment.  <dest> names the directory under deps/ and defaults to the url's
+# basename, which is right when the asset IS that repository's product and
+# wrong when one repository publishes another's -- deps/commodore-900-toolchain
+# holding COHERENT's sources would read as a mistake.
 #
 #   kind git      one of OUR repositories.  Cloned to ../<basename of url> on
 #                 branch <ref> and left FLOATING there -- no detach, no
 #                 lockfile.  Four repositories are edited in the same
 #                 afternoon; a pin would record what a build should have used,
 #                 and the release stamp already records what it did.
+#   kind local    one of OURS that is not published.  Nothing is fetched and
+#                 nothing is invented: if the resolver already finds it the
+#                 line is satisfied, and otherwise this exits nonzero with the
+#                 resolver's own refusal, which names the variable to set.  A
+#                 dependency that cannot be acquired is reported as one, not
+#                 passed over -- `make deps' that exits 0 having placed nothing
+#                 is indistinguishable from one that placed everything.
 #   kind release  a third-party BINARY.  <ref> is a TAG, unpacked into
 #                 deps/<basename of url>/, which is gitignored.  Pinned
 #                 because we cannot fix it and nothing about a binary is
@@ -65,6 +76,15 @@ fetch_git() {
 	fi
 	echo "$1: cloning $2 ($3) -> $4"
 	git clone --branch "$3" "$2" "$4" || return 1
+}
+
+fetch_local() {
+	# $1 name.  Reached only when the resolver did not find it: the loop
+	# below asks first.
+	echo "$1: not published -- there is nothing to fetch." >&2
+	echo "  Provide a checkout of your own; the refusal below says how." >&2
+	sh "$here/deps.sh" -n "$1" || return 1
+	return 1
 }
 
 fetch_release() {
@@ -118,7 +138,7 @@ fetch_release() {
 rc=0
 # DEPS is read on fd 3: git and curl inherit stdin, and a clone that consumed
 # the rest of the file would silently skip the remaining edges.
-while read -r name kind url ref asset <&3; do
+while read -r name kind url ref asset dest <&3; do
 	case "$name" in ''|\#*) continue ;; esac
 	[ -z "$only" ] || [ "$only" = "$name" ] || continue
 	got=$(resolve "$name") || got=
@@ -126,9 +146,10 @@ while read -r name kind url ref asset <&3; do
 		echo "$name: already resolves to $got"
 		continue
 	fi
-	dir=$(basename "$url" .git)
+	dir=${dest:-$(basename "$url" .git)}
 	case "$kind" in
 	git)     fetch_git "$name" "$url" "$ref" "$(cd "$root/.." && pwd)/$dir" || rc=1 ;;
+	local)   fetch_local "$name" || rc=1 ;;
 	release) fetch_release "$name" "$url" "$ref" "$root/deps/$dir" "$asset" || rc=1 ;;
 	*)       echo "$name: unknown kind \`$kind' in DEPS" >&2; rc=1 ;;
 	esac
@@ -138,4 +159,6 @@ done 3< "$deps"
 
 # A clone that resolves to nothing is not a failure: our own repositories are
 # source, and most of them have to be BUILT before a resolver will accept them.
+# An edge that could not be PLACED is: `make deps' with no published compiler
+# dist exits nonzero and names it, and `make deps DEP=emu' is unaffected.
 exit $rc

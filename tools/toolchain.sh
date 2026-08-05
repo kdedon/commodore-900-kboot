@@ -1,6 +1,10 @@
 #!/bin/sh
 # toolchain.sh -- locate the Z8001 cross toolchain and print its build directory.
 #
+# This is COMPILER=cross's entry point.  The default flavour compiles with the
+# self-hosted compiler instead and wants no toolchain checkout at all; see
+# mk/compiler.mk.
+#
 # It resolves a directory holding cc0/cc1/cc2-z8001, as-z8001 and ld-z8001.
 # The search itself is tools/deps.sh, which every dependency of this repository
 # goes through and which `make deps' places clones for; this file is the

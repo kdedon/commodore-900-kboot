@@ -10,7 +10,7 @@
  *	 4	i_uid		2  owner
  *	 6	i_gid		2  group
  *	 8	i_size		4  length in bytes
- *	12	i_addr	    40 block addresses; see below
+ *	12	i_addr	       40  block addresses; see below
  *	52	i_atime		4  accessed
  *	56	i_mtime		4  modified
  *	60	i_ctime		4  inode changed
@@ -32,7 +32,7 @@
  *
  *	i_mode		native after iread(); read it directly
  *	i_size		native after iread(), but do NOT read it here -- the
- *					loader's 16-bit arithmetic must not read it at all
+ *			loader's 16-bit arithmetic must not read it at all
  *	i_addr		untouched, still packed; use gl3()
  *	the times	untouched, still swapped; declared only to place bytes
  *
@@ -44,14 +44,14 @@
 
 struct cohino {
 	unsigned short	i_mode;		/* type + permissions (native) */
-	short			i_nlink;	/* link count */
-	short			i_uid;		/* owner */
-	short			i_gid;		/* group */
-	long			i_size;		/* bytes */
-	char			i_addr[40];	/* 13 packed 3-byte block numbers */
-	long			i_atime;	/* accessed (still byte-swapped) */
-	long			i_mtime;	/* modified (still byte-swapped) */
-	long			i_ctime;	/* inode changed (still byte-swapped) */
+	short		i_nlink;	/* link count */
+	short		i_uid;		/* owner */
+	short		i_gid;		/* group */
+	long		i_size;		/* bytes */
+	char		i_addr[40];	/* 13 packed 3-byte block numbers */
+	long		i_atime;	/* accessed (still byte-swapped) */
+	long		i_mtime;	/* modified (still byte-swapped) */
+	long		i_ctime;	/* inode changed (still byte-swapped) */
 };
 
 #define CI_INOSZ	64		/* bytes per on-disk inode */

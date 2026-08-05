@@ -1,0 +1,18 @@
+#!/bin/sh
+# mk/guest/ld -- the linkage editor, run as a guest process.
+#
+# Options are forwarded unchanged: this repository's Makefile already speaks
+# the loader's language (-i, -L, -e, -R, -o).
+. "$(dirname "$0")/common.sh"
+guest_need
+out=""; args=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-o)	out=$2; shift;;
+	*)	args="$args $1";;
+	esac
+	shift
+done
+[ -n "$out" ] || guest_die "no -o output file"
+guest_run bin/ld $args -o "$(guest_tmp "$out")" || st=$?
+guest_done "$out" "${st:-0}"

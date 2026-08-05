@@ -1,15 +1,15 @@
 # resolver-isolation -- the regression test for the dependency SEARCH.
 #
-# Every other job sets C900_TOOLCHAIN explicitly, as it must: a job that
+# Every other job sets C900_ENV and C900_EMU explicitly, as it must: a job that
 # depended on directory adjacency breaks the first time a runner image moves
 # its checkouts.  That leaves the search lists in tools/deps.sh untested, and
 # the bug this repository has actually had is a resolver that walked outward,
 # found something belonging to somebody else, and reported a false success.
 #
 # So: the repository ALONE, in a deliberately deep directory, with an empty
-# $HOME and a $PATH holding no toolchain -- and the assertion is that the build
-# REFUSES, by name.  A pass here means the walk is still bounded and the
-# refusal still says which variable to set.
+# $HOME and a $PATH holding no compiler -- and the assertion is that the build
+# REFUSES, by name, for BOTH compiler flavours.  A pass here means the walk is
+# still bounded and the refusal still says which variable to set.
 name: resolver-isolation
 
 on:
@@ -45,12 +45,28 @@ jobs:
           test $rc -ne 0 || { echo "FAIL: resolved a toolchain that is not there"; exit 1; }
           echo "$out" | grep -q C900_TOOLCHAIN || { echo "FAIL: refusal does not name the variable"; exit 1; }
 
+      # The default flavour wants a compiler ENVIRONMENT, so that is the
+      # variable its refusal has to name; COMPILER=cross wants the toolchain
+      # and names the other.  A refusal that named the wrong one sends the
+      # reader to a variable that would not have helped.
       - name: "`make' refuses too, rather than building against a guess"
         working-directory: iso/a/b/c/d/e/f/commodore-900-kboot
         run: |
           set +e
           out=$(env -i HOME="$GITHUB_WORKSPACE/iso/home" PATH=/usr/bin:/bin \
                 make 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          test $rc -ne 0 || { echo "FAIL: make succeeded with no compiler"; exit 1; }
+          echo "$out" | grep -q C900_ENV || { echo "FAIL: refusal does not name the variable"; exit 1; }
+
+      - name: "`make COMPILER=cross' refuses, naming its own variable"
+        working-directory: iso/a/b/c/d/e/f/commodore-900-kboot
+        run: |
+          set +e
+          out=$(env -i HOME="$GITHUB_WORKSPACE/iso/home" PATH=/usr/bin:/bin \
+                make COMPILER=cross 2>&1)
           rc=$?
           set -e
           echo "$out"
@@ -65,10 +81,29 @@ jobs:
           HOME_ISO: ${{ github.workspace }}/iso/home
         run: |
           env -i HOME="$HOME_ISO" PATH=/usr/bin:/bin \
-              GIT_TERMINAL_PROMPT=0 make deps
+              GIT_TERMINAL_PROMPT=0 make deps DEP=toolchain
           test -d ../commodore-900-toolchain || { echo "FAIL: nothing was cloned"; exit 1; }
           before=$(git -C ../commodore-900-toolchain rev-parse HEAD)
           env -i HOME="$HOME_ISO" PATH=/usr/bin:/bin \
-              GIT_TERMINAL_PROMPT=0 make deps
+              GIT_TERMINAL_PROMPT=0 make deps DEP=toolchain
           after=$(git -C ../commodore-900-toolchain rev-parse HEAD)
           test "$before" = "$after" || { echo "FAIL: a second make deps moved the checkout"; exit 1; }
+
+      # The compiler dist either arrives or is refused BY NAME.  Not "it
+      # fails": that assertion would start failing the day the release is
+      # published.  What must never happen is exit 0 having placed nothing,
+      # which reads downstream as a compiler that is simply missing.
+      - name: make deps DEP=ours places the compiler, or says why not
+        working-directory: iso/a/b/c/d/e/f/commodore-900-kboot
+        run: |
+          set +e
+          out=$(env -i HOME="$GITHUB_WORKSPACE/iso/home" PATH=/usr/bin:/bin \
+                make deps DEP=ours 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ $rc -eq 0 ]; then
+            test -f deps/env-ours/lib/cc0 || { echo "FAIL: exit 0 and no compiler placed"; exit 1; }
+          else
+            echo "$out" | grep -q ours || { echo "FAIL: refusal does not name the edge"; exit 1; }
+          fi

@@ -1,0 +1,11 @@
+#!/bin/sh
+# mk/guest/cc1 -- the optimiser/selector pass, run as a guest process.
+#
+#	cc1 VARIANT IN OUT [mlevel [slevel [olevel]]]
+. "$(dirname "$0")/common.sh"
+guest_need
+[ $# -ge 3 ] || guest_die "usage: cc1 VARIANT IN OUT [mlevel [slevel [olevel]]]"
+v=$1 in=$2 out=$3
+shift 3
+guest_run lib/cc1 "$v" "$in" "$(guest_tmp "$out")" "$@" || st=$?
+guest_done "$out" "${st:-0}"

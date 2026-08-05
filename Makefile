@@ -8,15 +8,26 @@
 #   make test   build and run the host tests, mutation gate included
 #   make size   report the segment sizes of an existing build/kboot
 #   make deps   acquire what DEPS says this repository consumes
+#   make compiler-info   what COMPILER= resolved to, or why it did not
 #   make clean  remove build/ and tests/build/
+#
+# The compiler is selected, not hard-coded: COMPILER=ours (the default) builds
+# with the self-hosted Z8001 compiler under the emulator, COMPILER=cross with
+# the gcc-built host cross compiler.  mk/compiler.mk holds the flavours.
 
 SHELL = /bin/sh
 .DELETE_ON_ERROR:
 .PHONY: all test size deps clean
 
-# Goals that must work with no cross toolchain present: `deps' is how one is
-# obtained, and the tests build with the host cc.
-FREE = clean test deps
+# Set before the include: mk/compiler.mk defines the first target make would
+# otherwise take as the default goal.
+.DEFAULT_GOAL := all
+include mk/compiler.mk
+
+# Goals that must work with no compiler present: `deps' is how one is obtained,
+# `compiler-info' exists to report that there is none, and the tests build with
+# the host cc.
+FREE = clean test deps compiler-info
 ifeq ($(strip $(MAKECMDGOALS)),)
 NEED = all
 else
@@ -24,17 +35,10 @@ NEED = $(filter-out $(FREE),$(MAKECMDGOALS))
 endif
 
 ifneq ($(NEED),)
-TC := $(shell sh tools/toolchain.sh)
-ifeq ($(TC),)
-$(error no Z8001 toolchain -- run `sh tools/toolchain.sh' for how to name one)
+ifneq (,$(C900_CC_WHY))
+$(error COMPILER=$(COMPILER): $(C900_CC_WHY))
 endif
 endif
-
-CC0 = $(TC)/z8001/cc0-z8001
-CC1 = $(TC)/z8001/cc1-z8001
-CC2 = $(TC)/z8001/cc2-z8001
-AS  = $(TC)/as-z8001
-LD  = $(TC)/ld-z8001
 
 # cc0/cc1 variant word: the 16-bit segmented (VLARGE) model this machine uses.
 VAR ?= 800000020800
@@ -84,7 +88,7 @@ SPANSPT   = 17
 # would run truncated does not survive the build.
 $(LOADER): $(OBJ)
 	$(LD) -i -L -e start -R 0x30000000 -o $@ $(OBJ) > $(OBJDIR)/link.txt 2>&1
-	@echo "kboot: $$(wc -c < $@) bytes"
+	@echo "kboot: $$(wc -c < $@) bytes, compiler $(C900_CC_ID)"
 	sh tools/loutsize.sh --tcap $(TCOPY) --dcap $(DCOPY) \
 		--span-heads $(SPANHEADS) --span-spt $(SPANSPT) $@
 
@@ -100,7 +104,7 @@ $(OBJDIR)/%.o: src/%.c $(HDRS) | $(OBJDIR)
 	$(CC2) 0012 $(OBJDIR)/$*.z1 $@ $(OBJDIR)/$*.scr 0 >> $(LOG) 2>&1
 
 $(OBJDIR)/%.o: src/%.s $(HDRS) | $(OBJDIR)
-	cpp -traditional-cpp -P $(DEFS) $(INCS) $< > $(OBJDIR)/$*.i 2>> $(LOG)
+	$(CPP) $(CPPFLAGS) $(DEFS) $(INCS) $< > $(OBJDIR)/$*.i 2>> $(LOG)
 	$(AS) -g -o $@ $(OBJDIR)/$*.i >> $(LOG) 2>&1
 
 $(OBJDIR):

@@ -1,0 +1,14 @@
+#!/bin/sh
+# mk/guest/cc0 -- the compiler's first pass, run as a guest process.
+#
+#	cc0 VARIANT IN OUT [-Idir] [-Dname[=val]] [-Uname] ...
+#
+# Preprocessing is folded into this pass, so the -I/-D/-U flags come after the
+# three positional arguments and there is no separate cpp in the C path.
+. "$(dirname "$0")/common.sh"
+guest_need
+[ $# -ge 3 ] || guest_die "usage: cc0 VARIANT IN OUT [-I/-D/-U ...]"
+v=$1 in=$2 out=$3
+shift 3
+guest_run lib/cc0 "$v" "$in" "$(guest_tmp "$out")" "$@" || st=$?
+guest_done "$out" "${st:-0}"

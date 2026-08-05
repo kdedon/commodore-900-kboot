@@ -1,0 +1,20 @@
+#!/bin/sh
+# mk/guest/as -- the Z8001 assembler, run as a guest process.
+#
+#	as [-g] -o OUT FILE.s
+#
+# -g makes an undefined symbol an external rather than an error, which is what
+# a freestanding source calling into another object needs.
+. "$(dirname "$0")/common.sh"
+guest_need
+out=""; args=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-o)	out=$2; shift;;
+	*)	args="$args $1";;
+	esac
+	shift
+done
+[ -n "$out" ] || guest_die "no -o output file"
+guest_run bin/as $args -o "$(guest_tmp "$out")" || st=$?
+guest_done "$out" "${st:-0}"

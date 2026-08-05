@@ -14,16 +14,29 @@
 # re-searched.
 #
 #   dep         variable                  what it names
+#   ours        C900_ENV                  a compiler ENVIRONMENT: the `ours'
+#                                         guest root, whose cc0/cc1/cc2, as and
+#                                         ld are Z8001 binaries
+#   emu         C900_EMU                  the emulator binary, which is how a
+#                                         Z8001 compiler runs on a host
 #   toolchain   C900_TOOLCHAIN, Z8001_TOOLCHAIN
-#                                         the toolchain's BUILD directory
+#                                         the toolchain's BUILD directory, for
+#                                         the gcc-built cross passes
 #
-# Search order: the variable wins; then cc0-z8001 on $PATH (an installed
-# toolchain, like gcc); then a sibling checkout, walking outward AT MOST THREE
-# PARENTS, then one inside a `repos/' directory beside this repository.  Three
-# parents is what reaches the enclosing workspace from a repository staged at
-# <workspace>/repos/<repo>; further out is not a sibling, it is a coincidence
-# -- an unbounded walk finds another job's checkout on a CI runner and reports
-# a false success.
+# The first two serve COMPILER=ours, the default; the third serves
+# COMPILER=cross.  mk/compiler.mk says what each flavour is.
+#
+# Search order: the variable wins; then an installed copy ($PATH, or the
+# unpacked release `make deps' places under deps/); then a sibling checkout,
+# walking outward AT MOST THREE PARENTS, then one inside a `repos/' directory
+# beside this repository.  Three parents is what reaches the enclosing
+# workspace from a repository staged at <workspace>/repos/<repo>; further out
+# is not a sibling, it is a coincidence -- an unbounded walk finds another
+# job's checkout on a CI runner and reports a false success.
+#
+# A CHECKOUT OUTRANKS AN UNPACKED RELEASE for the compiler environment: someone
+# with a built toolchain beside this repository is testing that compiler, and a
+# pinned archive that quietly won would test last month's.
 #
 # tools/toolchain.sh is the caller's entry point and keeps its own name; this
 # file holds the search so that `make deps', which clones a sibling, and the
@@ -49,6 +62,64 @@ case "$1" in
 esac
 
 case "$dep" in
+ours)
+	VAR="C900_ENV"
+	WANT="a Z8001 compiler environment (the \`ours' guest root)"
+	LIST=
+	for d in $(siblings commodore-900-toolchain); do
+		LIST="$LIST $d/host/build/env/ours"
+	done
+	LIST="$LIST $root/deps/env-ours"
+	[ -n "$given" ] || given=${C900_ENV:-}
+	fixup() { echo "$1"; }
+	# The compiler passes are in lib/, the assembler and linker in bin/, which
+	# is where the guest's own driver looks for them.  Nothing here needs
+	# lib/libc.a or usr/include: the loader is freestanding and links against
+	# its own crt.s alone.
+	ok() {
+		[ -n "$1" ] &&
+		[ -f "$1/lib/cc0" ] && [ -f "$1/lib/cc1" ] && [ -f "$1/lib/cc2" ] &&
+		[ -f "$1/bin/as" ] && [ -f "$1/bin/ld" ]
+	}
+	HOW="  kboot is a Z8001 program and COMPILER=ours compiles it with the
+  self-hosted compiler -- Z8001 binaries, run under the emulator.  They come
+  as a dist:
+      make deps DEP=ours
+  which unpacks the release DEPS pins into deps/env-ours.  Or compose one from
+  a toolchain checkout and name it:
+      COHERENT_OS=/path/to/commodore-900-coherent/os \\
+          make -C commodore-900-toolchain env CCENV=ours
+      C900_ENV=/path/to/commodore-900-toolchain/host/build/env/ours make
+  or build with the gcc cross compiler instead: make COMPILER=cross."
+	;;
+emu)
+	VAR="C900_EMU"
+	WANT="the Commodore 900 emulator"
+	LIST="$root/deps/commodore-900-emulator"
+	p=$(command -v c900 2>/dev/null) && LIST="$LIST $p"
+	LIST="$LIST $(siblings commodore-900-emulator)"
+	[ -n "$given" ] || given=${C900_EMU:-}
+	# A directory names the checkout, a file the binary; both spellings are
+	# accepted and the BINARY is printed, because that is what the wrappers
+	# exec.  On Windows it is c900.exe.
+	fixup() {
+		if [ -d "$1" ]; then
+			if [ -f "$1/bin/c900" ]; then echo "$1/bin/c900"
+			else echo "$1/bin/c900.exe"; fi
+		else echo "$1"; fi
+	}
+	# -f as well as -x: every directory is executable, so -x alone accepts a
+	# checkout path and prints it as if it were the binary.
+	ok() { [ -f "$1" ] && [ -x "$1" ]; }
+	HOW="  The compiler of COMPILER=ours is a Z8001 program, and \`c900 --exec'
+  is what runs one on a host.  It is not built here:
+      make deps DEP=emu
+  unpacks the release DEPS pins into deps/commodore-900-emulator, or
+      git clone https://github.com/MichalPleban/commodore-900-emulator
+      make -C commodore-900-emulator
+  beside this repository, or put c900 on \$PATH, or set C900_EMU to the
+  checkout or to its bin/c900.  COMPILER=cross needs no emulator."
+	;;
 toolchain)
 	VAR="C900_TOOLCHAIN"
 	WANT="the Z8001 cross toolchain"
@@ -80,7 +151,7 @@ toolchain)
   beside this repository.  Everything else kboot needs is in this repository."
 	;;
 *)
-	echo "deps.sh: unknown dependency \`$dep' (toolchain)" >&2
+	echo "deps.sh: unknown dependency \`$dep' (ours, emu, toolchain)" >&2
 	exit 2
 	;;
 esac

@@ -1,0 +1,10 @@
+build/
+__pycache__/
+*.pyc
+tests/build/
+
+# `make deps` unpacks pinned third-party release binaries here (DEPS).
+deps/
+
+# Per-consumer build directories (BUILD=/C900_TC_BUILD overrides).
+build-*/
