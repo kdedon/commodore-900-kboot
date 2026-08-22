@@ -1,8 +1,4 @@
-# Makefile -- kboot, the Commodore 900 chainloader.
-#
-# Produces build/kboot, an l.out the stock boot ROM loads (installed on the
-# media as /coherent) and which then loads a real OS kernel with correct
-# 32-bit addressing.  See README.md.
+# kboot, the Commodore 900 chainloader. Produces build/kboot.
 #
 #   make        build build/kboot
 #   make test   build and run the host tests, mutation gate included
@@ -17,7 +13,7 @@
 
 SHELL = /bin/sh
 .DELETE_ON_ERROR:
-.PHONY: all test size deps clean
+.PHONY: all test size deps clean help
 
 # Set before the include: mk/compiler.mk defines the first target make would
 # otherwise take as the default goal.
@@ -27,7 +23,7 @@ include mk/compiler.mk
 # Goals that must work with no compiler present: `deps' is how one is obtained,
 # `compiler-info' exists to report that there is none, and the tests build with
 # the host cc.
-FREE = clean test deps compiler-info
+FREE = clean test deps compiler-info help
 ifeq ($(strip $(MAKECMDGOALS)),)
 NEED = all
 else
@@ -57,6 +53,16 @@ OBJ  = $(patsubst src/%.c,$(OBJDIR)/%.o,$(wildcard src/*.c)) \
        $(patsubst src/%.s,$(OBJDIR)/%.o,$(wildcard src/*.s))
 
 all: $(LOADER)
+
+help:
+	@printf '%s\n' \
+	  'make                 build build/kboot' \
+	  'make COMPILER=cross  use the host cross-compiler' \
+	  'make test            run host and mutation tests' \
+	  'make size            check loader size limits' \
+	  'make compiler-info   show the selected compiler' \
+	  'make deps            fetch inputs listed in DEPS' \
+	  'make clean           remove build products'
 
 # Never a prerequisite of a build: a build that silently fetched would decide
 # for you which version of another repository you are testing against.
