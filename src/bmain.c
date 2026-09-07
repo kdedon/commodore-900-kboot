@@ -417,16 +417,11 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 	}
 	/* Fill down to what this kernel declared, never up to what this loader
 	 * knows. */
-	bi.bi_version = (unsigned short)kver;
-	bi.bi_len = (unsigned short)klen;
-	bi.bi_src = BI_SRC_KBOOT;	/* the kernel's cue that this is a handoff */
-	if (klen >= BI_LEN3) {
-		bi.bi_flags = (unsigned short)oslist[k].bflags;
-		bi.bi_console = convid() ? BI_CON_VID : BI_CON_SER;
-	} else if (oslist[k].bflags != 0)
+	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags,
+		    (unsigned)(convid() ? BI_CON_VID : BI_CON_SER),
+		    sccprobe(!convid())) & BIU_FLAGS) != 0
+	    && oslist[k].bflags != 0)
 		puts("kboot: kernel too old for boot flags\n");
-	bi.bi_sum = 0;
-	bi.bi_sum = -bisum(&bi);
 	ldirb((unsigned long)&bi, (unsigned long)p, klen);
 	return (0);
 }

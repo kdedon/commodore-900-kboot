@@ -19,7 +19,7 @@ SAMPLE = ../cfg/kboot.cfg.sample
 HFLAGS = -std=gnu89 -w -I../src -I../include -Ibuild -DCFGSAMPLE=\"$(SAMPLE)\"
 OUT    = build
 
-TESTS = $(OUT)/cfgtest $(OUT)/uitest
+TESTS = $(OUT)/cfgtest $(OUT)/uitest $(OUT)/bitest $(OUT)/scctest
 
 all: run
 
@@ -32,6 +32,16 @@ $(OUT)/cfgtest: cfgtest.c ../src/cfg.c $(SAMPLE) | $(OUT)
 $(OUT)/uitest: uitest.c concon.c ../src/ui.c ../src/cfg.c | $(OUT)
 	$(HCC) $(HFLAGS) -o $@ uitest.c concon.c ../src/ui.c ../src/cfg.c
 
+# The handoff.  bipack.c is the real fill, linked as it ships: no ROM, no
+# disk, so the test runs the loader's own code and not a copy of it.
+$(OUT)/bitest: bitest.c ../src/bipack.c ../include/bootinfo.h | $(OUT)
+	$(HCC) $(HFLAGS) -o $@ bitest.c ../src/bipack.c
+
+# The probe.  scctest.c #includes ../src/scc.c with a fake bus under it, so
+# there is no second object to link -- the file under test IS the shipped one.
+$(OUT)/scctest: scctest.c ../src/scc.c | $(OUT)
+	$(HCC) $(HFLAGS) -o $@ scctest.c
+
 $(OUT):
 	mkdir -p $(OUT)
 
@@ -39,8 +49,56 @@ $(OUT):
 # mistyped, and require the suite to notice each one.  The two layout
 # mutations are the failures that boot a system on another system's disk
 # layout, which is the fault this grammar exists to make impossible.
+# A mutation of include/bootinfo.h needs the generated copy searched BEFORE
+# the shipped one, which is the only thing this ordering does.
+MFLAGS = -std=gnu89 -w -I$(OUT) -I../src -I../include -DCFGSAMPLE=\"$(SAMPLE)\"
+
 mutate: | $(OUT)
 	@fail=0; \
+	sed 's/if (klen >= BI_LEN4)/if (1)/' ../src/bipack.c > $(OUT)/m15.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m15 bitest.c $(OUT)/m15.c 2>/dev/null; \
+	if $(OUT)/m15 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: bitest passed a loader that writes bi_serial into an old block"; fail=1; \
+	else echo "mutate ok: a field written past a kernel's length is caught"; fi; \
+	sed 's/bp->bi_sum = -bisum(bp);/bp->bi_sum = bisum(bp);/' ../src/bipack.c > $(OUT)/m16.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m16 bitest.c $(OUT)/m16.c 2>/dev/null; \
+	if $(OUT)/m16 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: bitest passed a block whose checksum does not clear"; fail=1; \
+	else echo "mutate ok: a checksum that does not sum to zero is caught"; fi; \
+	sed 's/miss |= BIU_SERIAL;/;/' ../src/bipack.c > $(OUT)/m17.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m17 bitest.c $(OUT)/m17.c 2>/dev/null; \
+	if $(OUT)/m17 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: bitest passed a loader that hides what it could not deliver"; fail=1; \
+	else echo "mutate ok: an undelivered field reported as delivered is caught"; fi; \
+	sed 's/if (i == 0 \&\& conser)/if (0)/' ../src/scc.c > $(OUT)/m19.c; \
+	$(HCC) $(HFLAGS) -DSCCSRC=\"$(OUT)/m19.c\" -o $(OUT)/m19 scctest.c 2>/dev/null; \
+	if $(OUT)/m19 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: scctest passed a probe that writes to the live console line"; fail=1; \
+	else echo "mutate ok: a pattern written down the console line is caught"; fi; \
+	sed 's/\toutb(base + SCC_WR12, o12);/\t;/' ../src/scc.c > $(OUT)/m20.c; \
+	$(HCC) $(HFLAGS) -DSCCSRC=\"$(OUT)/m20.c\" -o $(OUT)/m20 scctest.c 2>/dev/null; \
+	if $(OUT)/m20 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: scctest passed a probe that leaves a line at another speed"; fail=1; \
+	else echo "mutate ok: a time constant not put back is caught"; fi; \
+	sed 's/m |= (unsigned)1 << i;/m |= 1;/' ../src/scc.c > $(OUT)/m21.c; \
+	$(HCC) $(HFLAGS) -DSCCSRC=\"$(OUT)/m21.c\" -o $(OUT)/m21 scctest.c 2>/dev/null; \
+	if $(OUT)/m21 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: scctest passed a map that reports every line as line 0"; fail=1; \
+	else echo "mutate ok: a channel reported in the wrong bit is caught"; fi; \
+	sed -e 's/outb(base + SCC_WR12, 0xa5);/outb(base + SCC_WR12, 0x5a);/' \
+	    -e 's/outb(base + SCC_WR13, 0x5a);/outb(base + SCC_WR13, 0xa5);/' \
+		../src/scc.c > $(OUT)/m22.c; \
+	$(HCC) $(HFLAGS) -DSCCSRC=\"$(OUT)/m22.c\" -o $(OUT)/m22 scctest.c 2>/dev/null; \
+	if $(OUT)/m22 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: scctest passed a second pass that repeats the first"; fail=1; \
+	else echo "mutate ok: the exchanged-pattern pass mistyped is caught"; fi; \
+	sed 's/return ((unsigned short)BI_LEN4);/return ((unsigned short)BI_LEN3);/' \
+		../include/bootinfo.h > $(OUT)/bootinfo.h; \
+	$(HCC) $(MFLAGS) -o $(OUT)/m18 bitest.c ../src/bipack.c 2>/dev/null; \
+	rm -f $(OUT)/bootinfo.h; \
+	if $(OUT)/m18 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: bitest passed a version table that gives v4 v3's length"; fail=1; \
+	else echo "mutate ok: a wrong length for a version is caught"; fi; \
 	sed 's/nos < MAXOS/nos <= MAXOS/' ../src/cfg.c > $(OUT)/m1.c; \
 	$(HCC) $(HFLAGS) -o $(OUT)/m1 cfgtest.c $(OUT)/m1.c 2>/dev/null; \
 	if $(OUT)/m1 >/dev/null 2>&1; then \

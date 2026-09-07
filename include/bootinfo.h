@@ -22,7 +22,7 @@
 
 #define	BI_MAGLEN	8
 #define	BI_MAGIC	{ 'K', 'B', 'O', 'O', 'T', 'P', 'T', 'B' }
-#define	BI_VERSION	3			/* 3 added bi_flags + bi_console */
+#define	BI_VERSION	4			/* 4 added bi_serial */
 #define	BI_OLDEST	2			/* 2 added bi_src + the swap extent */
 #define	BI_NPART	16			/* wd(4) pseudo-drives: /dev/hd0..hd15 */
 
@@ -43,6 +43,46 @@
 #define	BI_CON_ANY	0	/* the loader said nothing: the kernel probes */
 #define	BI_CON_SER	1	/* serial line (the SCC console) */
 #define	BI_CON_VID	2	/* a video board; the kernel picks hi/lo res */
+
+/*
+ * bi_serial -- WHICH SERIAL CHANNELS ARE FITTED, one bit each.  This is the
+ * hardware question bi_console is not: bi_console says where the operator is
+ * sitting, bi_serial says what silicon answered when the loader wrote to it
+ * and read it back.  Any system wanting to offer logins, or a second line, on
+ * everything the machine really has reads this instead of guessing.
+ *
+ * A bit is set only for a channel the loader PROVED answers.  Zero therefore
+ * means "not found" and never "not looked at": a channel the loader could not
+ * prove is reported absent on purpose, because a system that talks to a
+ * channel that is not there is worse off than one that ignores a channel that
+ * is.  A block older than version 4 carries no bi_serial at all, and a reader
+ * that finds none falls back to whatever it knew before.
+ *
+ * The bit order is the C900's own serial-line numbering -- the order of
+ * ascending I/O base address, which is also the minor-device order of the
+ * Coherent Z8030 driver (al.c altty[]) and the line numbering of the system
+ * hardware spec.  Bit i is line i on every one of them:
+ *
+ *   bit  I/O base  chip                              connector
+ *    0   0x0100    motherboard SCC U74 channel A     rear DB25 (the ROM's
+ *                                                    own console line)
+ *    1   0x0120    motherboard SCC U74 channel B     rear DB25
+ *    2   0x0300    LR board SCC #1 U31 channel A     CN3 DB25
+ *    3   0x0320    LR board SCC #1 U31 channel B     CN4 DB25
+ *    4   0x0380    LR board SCC #2 U36 channel A     CN5 header
+ *    5   0x03A0    LR board SCC #2 U36 channel B     CN6 header
+ *    6   0x0600    Aux3 channel A ) spec-architectural expansion; no loader
+ *    7   0x0620    Aux3 channel B ) probes them yet, so they read 0
+ *    8   0x0680    Aux4 channel A ) reserved by the spec for sync comms,
+ *    9   0x06A0    Aux4 channel B ) modems and printers, not for logins
+ *
+ * Bits 10-15 are RESERVED AND MUST BE ZERO.  A machine with no LR board (an
+ * HR system) has nothing at 0x0300-0x03FF and reports 0x03; an LR system with
+ * U36 unpopulated -- which is how at least one inventoried board shipped --
+ * reports 0x0F; a fully populated LR system reports 0x3F.
+ */
+#define	BI_NSERIAL	10	/* channels the numbering above defines */
+#define	BI_SER_CON	0x0001	/* bit 0: the line the boot ROM consoles on */
 
 /*
  * One pseudo-drive: /dev/hdN spans bstart .. bstart+bcount-1 of the physical
@@ -73,6 +113,8 @@ struct	bootinfo {
 	/* --- version 3 ------------------------------------------------- */
 	unsigned short	bi_flags;	/* BF_*: what this boot was asked for */
 	unsigned short	bi_console;	/* BI_CON_*: where the operator is */
+	/* --- version 4 ------------------------------------------------- */
+	unsigned short	bi_serial;	/* serial channels found, one bit each */
 };
 
 /*
@@ -84,7 +126,9 @@ struct	bootinfo {
  * kernel's length it does not know refuses the entry.
  */
 #define	BI_TAIL3	4		/* bi_flags + bi_console */
-#define	BI_LEN3		(sizeof (struct bootinfo))
+#define	BI_TAIL4	2		/* bi_serial */
+#define	BI_LEN4		(sizeof (struct bootinfo))
+#define	BI_LEN3		(BI_LEN4 - BI_TAIL4)
 #define	BI_LEN2		(BI_LEN3 - BI_TAIL3)
 
 /*
@@ -98,6 +142,8 @@ bilen(v) unsigned v;
 		return ((unsigned short)BI_LEN2);
 	if (v == 3)
 		return ((unsigned short)BI_LEN3);
+	if (v == 4)
+		return ((unsigned short)BI_LEN4);
 	return (0);
 }
 

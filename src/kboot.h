@@ -85,6 +85,26 @@ extern					cfgparse();
  * layout that is booted is ever built. */
 extern					cfglayout();
 
+/* --- scc.c ---------------------------------------------------------------- */
+/* Is a Z8030 channel based at this I/O address really there?  Writes a pattern
+ * and reads it back; leaves the channel as it found it. */
+extern int				sccthere();
+/* The serial channels this machine has, one bit each, as bootinfo.h's
+ * bi_serial defines them.  The argument says the operator is at the serial
+ * console, whose channel is then taken as present without being written to. */
+extern unsigned			sccprobe();
+
+/* --- bipack.c ------------------------------------------------------------- */
+/* What a kernel's block was too old to be given.  Zero is everything
+ * delivered, which is what a kernel built against this loader's BI_VERSION
+ * gets. */
+#define BIU_FLAGS	0x0001	/* bi_flags + bi_console: older than version 3 */
+#define BIU_SERIAL	0x0002	/* bi_serial: older than version 4 */
+
+/* Fill a kernel's block down to the version it declared, and checksum it.
+ * Returns the BIU_* bits it had no room for. */
+extern unsigned			bipack();
+
 /* --- ui.c ----------------------------------------------------------------- */
 extern int				uimenu();	/* -> the entry to boot, or -1 to give up */
 

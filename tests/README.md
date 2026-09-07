@@ -6,11 +6,22 @@ loop this repository has.
 
 ## What they prove, and what they cannot
 
-They cover the two pieces of the loader that are **pure logic**: the
-`kboot.cfg` parser (`src/cfg.c`) and the menu state machine (`src/ui.c`).
-`src/ui.c` reaches the machine only through `src/con.h`, so `concon.c` here
-supplies a fake console — a scripted key queue and a captured transcript — and
-the state machine runs on the host exactly as it runs on the loader.
+They cover the pieces of the loader that are **pure logic**: the `kboot.cfg`
+parser (`src/cfg.c`), the menu state machine (`src/ui.c`), the bootinfo handoff
+(`src/bipack.c`) and the serial-channel probe (`src/scc.c`).  `src/ui.c`
+reaches the machine only through `src/con.h`, so `concon.c` here supplies a
+fake console — a scripted key queue and a captured transcript — and the state
+machine runs on the host exactly as it runs on the loader.  `src/scc.c` reaches
+it through two ROM calls, `inb` and `outb`, so `scctest.c` supplies those and
+runs the shipped probe over a bus that is not there: pulled up, pulled down,
+still holding the last byte driven onto it, and answering one constant to
+everything.  Every one of those has to come out as *no channel found* — the
+probe is allowed to miss a line, never to invent one.
+
+`bitest.c` works in the lengths **this** compiler makes the struct, not the
+Z8001's: the two sides of a real handoff are the same compiler, and hard-coding
+the machine's numbers would be testing a machine the test is not running on.
+Every assertion there is a relation between versions, never an address.
 
 They **cannot** prove loader behaviour.  `src/bmain.c` is the ROM, the inode
 walk and the segment staging, and none of that exists on a host; neither does
