@@ -30,8 +30,11 @@ uient(i, cur) int i, cur;
 		cputs("  ");
 		cputs(fb);
 	}
-	if (oslist[i].badflg)
-		cputs("  ** unknown flag: cannot boot **");
+	if (oslist[i].badflg) {
+		cputs((oslist[i].badflg & BADFLG) ? "  ** unknown flag"
+						   : "  ** unknown console");
+		cputs(": cannot boot **");
+	}
 	if (i == cur)
 		conrev(0);
 	conclr();
@@ -224,8 +227,11 @@ uiedit(k, rec) int k, rec;
 			cputs("   flags ");
 			cputs(fb);
 		}
-		if (oslist[k].badflg)
-			cputs("   ** unknown flag: cannot boot **");
+		if (oslist[k].badflg) {
+			cputs((oslist[k].badflg & BADFLG) ? "   ** unknown flag"
+							   : "   ** unknown console");
+			cputs(": cannot boot **");
+		}
 		cputs(rec ? "\n[a-e] change  [v] verify  [enter] boot it  [x] menu"
 			    "   (this boot only: kboot cannot write the disk)\n"
 			    "recovery> "
@@ -292,6 +298,7 @@ uirecov(from) int from;
 	oslist[r].lay = oslist[from].lay;
 	oslist[r].voc = oslist[from].voc;
 	oslist[r].bflags = oslist[from].bflags;
+	oslist[r].conser = oslist[from].conser;
 	/* The copy carries the flags that RESOLVED, and not the refusal: a
 	 * name the config got wrong is what recovery is here to get past. */
 	oslist[r].badflg = 0;

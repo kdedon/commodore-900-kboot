@@ -328,7 +328,7 @@ loadcfg()
 				cfgread();
 				cfgparse();
 				if (cfgflgerr)
-					puts("kboot: a `flags' line belongs to no entry and set nothing\n");
+					puts("kboot: a `flags' or `console' line belongs to no entry and set nothing\n");
 			}
 		}
 	}
@@ -351,6 +351,7 @@ loadcfg()
 		oslist[0].voc = LAYGLOB;
 		oslist[0].bflags = 0;
 		oslist[0].badflg = 0;
+		oslist[0].conser = 0;
 		nos = 1;
 		if (!seen)
 			puts("kboot: no kboot.cfg; using defaults\n");
@@ -376,7 +377,7 @@ loadcfg()
 static char *
 bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 {
-	unsigned off, lim, kver, klen;
+	unsigned off, lim, kver, klen, con;
 	register char *p;
 	register int i;
 
@@ -415,11 +416,16 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 		copyfar((unsigned long)p, (unsigned long)&bi,
 			(unsigned long)klen);
 	}
+	/* The console the system is TOLD to use, and obeys without probing:
+	 * `console serial' as the entry wrote it, otherwise what the cards
+	 * answer (vid.c), serial when none does.  bi_serial's console bit
+	 * follows that decision too.  The ROM's flags say only where this
+	 * loader's own menu went, which is not the system's console. */
+	con = oslist[k].conser ? BI_CON_SER : vidprobe();
 	/* Fill down to what this kernel declared, never up to what this loader
 	 * knows. */
-	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags,
-		    (unsigned)(convid() ? BI_CON_VID : BI_CON_SER),
-		    sccprobe(!convid())) & BIU_FLAGS) != 0
+	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags, con,
+		    sccprobe(con == BI_CON_SER)) & BIU_FLAGS) != 0
 	    && oslist[k].bflags != 0)
 		puts("kboot: kernel too old for boot flags\n");
 	ldirb((unsigned long)&bi, (unsigned long)p, klen);

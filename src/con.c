@@ -3,14 +3,16 @@
  * clock, on each of the three consoles.  The only file in the loader that
  * names a console type or touches an I/O port.
  *
- * Keys come from the non-blocking poll the ROM's getchar is built from
- * (romabi.h).  Time comes from CT3 of Z8036 CIO #1 at 100 Hz, programmed as
- * the kernel's md.s programs it, with the time constant chosen from the
- * rom_ctype byte.  The counter's interrupt-pending bit is POLLED and no
+ * Keys come from the SCC on serial, and on video from COHERENT's keyboard
+ * driver (kbd900.h), not the ROM's: the ROM's keyboard routines are what
+ * Michal Pleban's web emulator does not serve.  Time comes from CT3 of
+ * Z8036 CIO #1 at 100 Hz, programmed as the kernel's md.s programs it, with
+ * the time constant chosen from the rom_ctype byte.  The counter's interrupt-pending bit is POLLED and no
  * interrupt is ever enabled, so a kernel inherits nothing armed.
  */
 #include "romabi.h"
 #include "con.h"
+#include "kbd900.h"
 
 /* Z8036 CIO #1; port = 2*register+1.  MCCR/MICR are read-modify-written,
  * never assigned: the ROM has the keyboard on port A there. */
@@ -44,16 +46,6 @@ static int		ckind;
 static unsigned	tk;		/* hundredths counted so far */
 static int		esc;	/* how much of an ESC [ x sequence has arrived */
 
-/* Which console the ROM chose.  LR and HR are one case: they differ in how
- * they draw, not in how they are read. */
-static int
-conwhich()
-{
-	if (*(char *)ROMV_CONALT != 0 || *(char *)ROMV_CONHIRES != 0)
-		return (C_VID);
-	return (C_SER);
-}
-
 /* con.h: is the console a video board?  Answered from what coninit()
  * settled, so it names the console the menu was drawn on. */
 int
@@ -67,7 +59,11 @@ coninit()
 	unsigned tc;
 	char *rc;
 
-	ckind = conwhich();
+	/* Which console the ROM chose.  LR and HR are one case: they differ in
+	 * how they draw, not in how they are read. */
+	ckind = C_SER;
+	if (*(char *)ROMV_CONALT != 0 || *(char *)ROMV_CONHIRES != 0)
+		ckind = C_VID;
 	esc = 0;
 	tk = 0;
 
@@ -82,6 +78,16 @@ coninit()
 	outb(CT3CS, CS_IP);				/* clear a stale IP/IUS */
 	outb(MCCR, inb(MCCR) | CT3_CT3E);
 	outb(CT3CS, CS_GATE | CS_TRIG);	/* gate open, start counting */
+
+	/* Port A for the keyboard, every time, whatever the ROM did: our
+	 * writes are the ROM kbd_init's mode less its vector and IE command,
+	 * so a port the ROM already set up is set up the same.  Then the
+	 * ROM's once-only flag, so a system that reads the keyboard through
+	 * the ROM finds it programmed and does not program it again. */
+	if (ckind == C_VID) {
+		kbdinit();
+		*(int *)ROMV_GETINIT = 1;
+	}
 }
 
 /*
@@ -111,17 +117,14 @@ rawkey()
 			return (0);
 		return (inb(SCC_DATA) & 0x7f);
 	}
-	/* getchar's own once-only flag, shared so a poll and a later getchar()
-	 * cannot each initialise the keyboard. */
-	if (*(int *)ROMV_GETINIT == 0) {
-		kbdinit();
-		*(int *)ROMV_GETINIT = 1;
-	}
+	/* kbd900.h: 0, or a 7-bit character; key-ups and modifiers give 0.
+	 * An arrow is ESC and a queued letter.  The letter is discarded, so
+	 * no editor line takes it: the video consoles cannot redraw, so the
+	 * menu has no bar for an arrow to move (ui.c uibar). */
 	r = kbdpoll();
-	if (r == 0)
-		return (0);
-	/* 0 = a key-up or a bare modifier: no character, so no key. */
-	return (kbddec(r) & 0x7f);
+	if (r == 0x1b)
+		kbqi = kbqn;
+	return (r);
 }
 
 /*

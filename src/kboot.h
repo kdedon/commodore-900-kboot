@@ -45,9 +45,17 @@ struct osent {
 	unsigned		bflags;
 	/* A `flags' line named something voc does not define.  The entry is
 	 * not booted: the flag cannot be delivered and dropping it quietly
-	 * boots a system that looks like the one asked for. */
+	 * boots a system that looks like the one asked for.  A `console' line
+	 * with a value this loader does not know refuses it the same way.
+	 * BADFLG and BADCON say which. */
 	int				badflg;
+	/* A `console serial' line: hand over BI_CON_SER without probing the
+	 * cards.  0 -- `console probe', or no line -- lets vid.c decide. */
+	int				conser;
 };
+
+#define BADFLG	0x01	/* a `flags' name the entry's vocabulary lacks */
+#define BADCON	0x02	/* a `console' line that is not `serial' or `probe' */
 
 /* oslist[].lay and .voc name a scope: an `os' line by its index, or one of
  * these.  LAYGLOB is what stands before any `system' or `os' line; LAYSYS(n)
@@ -67,7 +75,8 @@ extern int				cfgdflt;	/* `default', 1-based; 0 = the first entry */
 /* A config file was read and named nothing bootable -- not the same as there
  * being no config file. */
 extern int				cfgfault;
-/* A `flags' line stood where no entry owned it, and set nothing. */
+/* A `flags' or `console' line stood where no entry owned it, and set
+ * nothing. */
 extern int				cfgflgerr;
 
 extern int				streqoff();
@@ -93,6 +102,11 @@ extern int				sccthere();
  * bi_serial defines them.  The argument says the operator is at the serial
  * console, whose channel is then taken as present without being written to. */
 extern unsigned			sccprobe();
+
+/* --- vid.c ---------------------------------------------------------------- */
+/* The console the framebuffers answer for: BI_CON_HR, BI_CON_LR, or
+ * BI_CON_SER when no card does.  Leaves every word it probed as it was. */
+extern unsigned			vidprobe();
 
 /* --- bipack.c ------------------------------------------------------------- */
 /* What a kernel's block was too old to be given.  Zero is everything

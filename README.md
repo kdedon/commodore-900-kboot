@@ -40,12 +40,22 @@ Copy `cfg/kboot.cfg.sample` to the boot partition as `kboot.cfg`.
     bflag <name> <bit>
     os <label> <base-block> <kernel> [part]
     flags <name> ...
+    console serial|probe
     timeout <seconds>
     default <entry-number>
 
 `part`, `swap`, and `bflag` apply to the nearest preceding `os` or `system`
 block, falling back to file-wide defaults. A scope that defines any entries of
 one kind replaces the outer set for that kind.
+
+`flags` and `console` belong to the `os` entry above them. `console` says
+which console that system is handed as `bi_console`, which it uses without
+probing: `serial` hands over the serial line as written; `probe`, and no
+`console` line at all, has kboot test the hi-res framebuffer and then the
+low-res one, and hand over the card that answers, or the serial line when
+neither does. No value forces video, because an entry pinned to a card that
+is not fitted would boot unusable. Only an entry that takes a handoff (`part`
+or `flags`) is told anything.
 
 Important limits:
 
@@ -56,8 +66,9 @@ Important limits:
 - 13-character kernel filenames
 - partition slots 0 through 15
 
-Unknown keywords are ignored. Invalid requested flags or missing partition
-handoffs reject the affected menu entry. A missing configuration file uses the
+Unknown keywords are ignored. Invalid requested flags, a `console` value other
+than `serial` or `probe`, or missing partition handoffs reject the affected
+menu entry. A missing configuration file uses the
 compiled defaults; a valid file with no bootable entries enters recovery.
 
 The menu accepts a digit to boot immediately, `j`/`k` to move, Enter to boot

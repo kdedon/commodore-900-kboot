@@ -1,5 +1,5 @@
 # kboot.cfg -- copy to the boot partition beside the loader and edit.
-# It is read at most 1024 bytes, comments included, so keep it short.
+# Read at most 1024 bytes, comments included: keep it short.
 # The format reference, and every limit, is in this repository's README.
 
 # geom <cyl> <heads> <spt> <precomp>
@@ -21,9 +21,10 @@ bflag SINGLE 1
 os OpenCoherent-3.5 136 coherent part
 # flags <NAME> ... -- this entry boots with BF_SINGLE set: single user.
 flags SINGLE
+# console serial|probe -- the console it is handed; no line means probe.
+console probe
 
-# No `part': this entry asks for no handoff, so it is loaded and started in
-# silence.  Add the flag if the system it names grows a bootinfo block.
+# No `part': no handoff, so no table, flag or console reaches it.
 os CPM-8000 58624 cpm.sys
 
 timeout 5

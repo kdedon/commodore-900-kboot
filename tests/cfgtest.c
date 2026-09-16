@@ -515,6 +515,79 @@ t_system()
 }
 
 /*
+ * console serial|probe -- per entry, and exactly two values.  Nothing forces
+ * video: an entry pinned to a card that is not fitted must never boot
+ * unusable, so a value the loader does not know refuses the entry instead of
+ * being guessed at, and a line the loader never read leaves the default.
+ */
+static void
+t_console()
+{
+	static char big[CFGMAX + 64];
+	int n;
+
+	printf("the console line\n");
+	parse("os A 1 k part\nconsole serial\nos B 2 k part\nconsole probe\n"
+	      "os C 3 k part\n");
+	OK("`console serial' pins A", oslist[0].conser, 1);
+	OK("`console probe' leaves B to the cards", oslist[1].conser, 0);
+	OK("no line: C probes", oslist[2].conser, 0);
+	OK("none refused",
+	   oslist[0].badflg + oslist[1].badflg + oslist[2].badflg, 0);
+	OK("no orphan line", cfgflgerr, 0);
+
+	parse("os A 1 k part\nconsole video\nos B 2 k part\nconsole serial\n");
+	OK("an unknown value refuses", oslist[0].badflg & BADCON, BADCON);
+	OK("...as a console, not a flag", oslist[0].badflg & BADFLG, 0);
+	OK("...and pins nothing", oslist[0].conser, 0);
+	OK("the next entry is not refused", oslist[1].badflg, 0);
+	OK("...and is still pinned", oslist[1].conser, 1);
+
+	parse("os A 1 k\nconsole\n");
+	OK("no value refuses", oslist[0].badflg, BADCON);
+	parse("os A 1 k\nconsole serial probe\n");
+	OK("two values refuse", oslist[0].badflg, BADCON);
+	parse("os A 1 k\nconsole SERIAL\n");
+	OK("case matters", oslist[0].badflg, BADCON);
+	parse("os A 1 k\nconsole serialx\n");
+	OK("a longer word is not `serial'", oslist[0].badflg, BADCON);
+	parse("os A 1 k\nconsole serial # the ROM's line\n");
+	OK("a trailing comment is no value", oslist[0].conser, 1);
+	OK("...and no refusal", oslist[0].badflg, 0);
+	parse("bflag SINGLE 1\nos A 1 k\nflags NOPE\nconsole bogus\n");
+	OK("both refusals are kept", oslist[0].badflg, BADFLG | BADCON);
+
+	parse("console serial\nos A 1 k\n");
+	OK("above every entry: reported", cfgflgerr, 1);
+	OK("...and pins nothing", oslist[0].conser, 0);
+	parse("system s\nconsole serial\nos A 1 k\n");
+	OK("in a block header: reported", cfgflgerr, 1);
+	OK("...and pins nothing", oslist[0].conser, 0);
+	parse("os A 1 k\nconsole serial\nos B 2 k\n");
+	OK("one entry's line is not the next's", oslist[1].conser, 0);
+
+	/* OVERSIZED.  The loader reads CFGMAX bytes and no more (bmain.c
+	 * cfgread), so a line wholly past them was never there: the entry
+	 * keeps the default and is not refused. */
+	strcpy(big, "os A 1 k part\n");
+	for (n = strlen(big); n < CFGMAX - 1; n++)
+		big[n] = '#';
+	big[CFGMAX - 1] = '\n';
+	strcpy(big + CFGMAX, "console serial\n");
+	parse(big);
+	OK("oversized: the entry is read", nos, 1);
+	OK("oversized: a line past CFGMAX pins nothing", oslist[0].conser, 0);
+	OK("...and refuses nothing", oslist[0].badflg, 0);
+	/* A line CUT by the limit reads `console ser': a value the loader
+	 * does not know, so the entry is refused, never guessed serial. */
+	big[CFGMAX - 12] = '\n';
+	strcpy(big + CFGMAX - 11, "console serial\n");
+	parse(big);
+	OK("cut at CFGMAX: refused, not pinned", oslist[0].badflg, BADCON);
+	OK("...and not serial", oslist[0].conser, 0);
+}
+
+/*
  * The shipped sample, through the real parser.  cfg/kboot.cfg.sample is the
  * file a user copies onto the disk verbatim, so two things about it are the
  * loader's business: it must fit the CFGMAX the loader reads, comments
@@ -559,6 +632,7 @@ t_sample()
 	OK("default", cfgdflt, 1);
 	OK("no orphan `flags' line", cfgflgerr, 0);
 	OK("no entry is refused", oslist[0].badflg + oslist[1].badflg, 0);
+	OK("its `console probe' pins nothing", oslist[0].conser, 0);
 	/* The sample's worked example of `flags': the name must reach the bit
 	 * its `bflag' line gives it and land in the entry's flag word, or the
 	 * demonstration is a line that boots nothing different. */
@@ -631,6 +705,7 @@ main()
 	t_layout();
 	t_flags();
 	t_system();
+	t_console();
 	t_sample();
 	if (fails)
 		printf("cfgtest: %d FAILED\n", fails);

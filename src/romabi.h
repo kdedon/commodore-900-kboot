@@ -68,7 +68,9 @@
  *                                         modifier
  *
  * The serial path has no such routine -- getchar polls the SCC inline -- so
- * con.c does that one itself with inb().
+ * con.c does that one itself with inb().  kboot no longer calls these three
+ * either: con.c reads the keyboard through kbd900.h.  The addresses stay as
+ * documentation of what that replaced.
  */
 #define ROM_INB		0x020a
 #define ROM_OUTB	0x021c
@@ -110,8 +112,5 @@ struct	cohino;
 #define puts(s)				((int (*)())ROM_PUTS)((char *)(s))
 #define inb(p)				((int (*)())ROM_INB)((unsigned)(p))
 #define outb(p,v)			((int (*)())ROM_OUTB)((unsigned)(p),(int)(v))
-#define kbdinit()			((int (*)())ROM_KBDINIT)()
-#define kbdpoll()			((int (*)())ROM_KBDPOLL)()
-#define kbddec(r)			((int (*)())ROM_KBDDEC)((int)(r))
 
 #endif /* ROMABI_H */

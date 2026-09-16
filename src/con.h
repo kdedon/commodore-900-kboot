@@ -32,8 +32,10 @@ extern int		conrev();	/* reverse video on (1) or off (0) */
 extern int		conclr();	/* erase from the cursor to end of line */
 
 /* Nonzero when the console the ROM chose is a video board rather than the
- * serial line, for the kernel handoff (bootinfo.h bi_console).  Hi-res versus
- * lo-res is not offered: the ROM flags do not distinguish them. */
+ * serial line.  It says where THIS LOADER's menu is and nothing more: the
+ * console a system is handed (bootinfo.h bi_console) is decided per entry by
+ * kboot.cfg and the framebuffer probe (vid.c, bmain.c bifill), and the ROM
+ * flags do not tell hi-res from low-res. */
 extern int		convid();
 
 /* Output, one call deep over the ROM's puts/putchar -- which is the point:

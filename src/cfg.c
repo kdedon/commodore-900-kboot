@@ -236,6 +236,7 @@ cfgparse()
 				oslist[nos].voc = sysvoc ? sys : LAYGLOB;
 				oslist[nos].bflags = 0;
 				oslist[nos].badflg = 0;
+				oslist[nos].conser = 0;
 				nos++;
 			}
 		} else if (nt >= 4 && (streqoff(tok[0], "part") ||
@@ -253,6 +254,22 @@ cfgparse()
 				oslist[owner].voc = owner;
 			else if (owner == sys)
 				sysvoc = 1;
+		} else if (nt >= 1 && streqoff(tok[0], "console")) {
+			/* console serial|probe -- how the entry above chooses
+			 * the console it is handed as bi_console (bmain.c
+			 * bifill): `serial' as written, `probe' by the cards
+			 * (vid.c), and no line is `probe'.  No value forces
+			 * video.  Anything else refuses the entry, as a flag
+			 * name it cannot deliver does; above every `os' line
+			 * it owns nothing, and is reported as `flags' is. */
+			if (owner < 0 || owner >= nos)
+				cfgflgerr = 1;
+			else if (nt == 2 && streqoff(tok[1], "serial"))
+				oslist[owner].conser = 1;
+			else if (nt == 2 && streqoff(tok[1], "probe"))
+				oslist[owner].conser = 0;
+			else
+				oslist[owner].badflg |= BADCON;
 		} else if (nt >= 2 && streqoff(tok[0], "timeout")) {
 			/* timeout <seconds> before `default' boots on its own.
 			 * 0, and absence, both mean wait forever. */
@@ -293,11 +310,11 @@ cfgparse()
 			/* Five tokens a line are kept, so a sixth name would
 			 * be dropped unseen.  Write another `flags' line. */
 			if (nt > 5)
-				oslist[owner].badflg = 1;
+				oslist[owner].badflg |= BADFLG;
 			for (j = 1; j < nt && j < 5; j++) {
 				b = bfbit(owner, tok[j], (char *)0);
 				if (b == 0)
-					oslist[owner].badflg = 1;
+					oslist[owner].badflg |= BADFLG;
 				else
 					oslist[owner].bflags |= b;
 			}
