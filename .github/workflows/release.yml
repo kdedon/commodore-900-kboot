@@ -66,6 +66,13 @@ jobs:
       - name: The host tests
         run: make test
 
+      # The loader->kernel ABI, packaged apart from the loader binary: a
+      # KERNEL build consumes this header alone and needs no compiler to get
+      # it, so it is what makes a `release' DEPS edge possible for that
+      # consumer instead of a sibling checkout of this repository.
+      - name: The header a kernel build compiles against
+        run: make headers-dist KBVERSION=${{ github.ref_name }}
+
       # kboot.cfg.sample is shipped beside the loader because a loader with no
       # configuration boots nothing, and the sample is the documented format.
       - name: Publish
@@ -74,5 +81,6 @@ jobs:
           files: |
             build/kboot
             cfg/kboot.cfg.sample
+            build/dist/c900-kboot-headers-*.tar.gz
           body: ${{ steps.cc.outputs.notes }}
           fail_on_unmatched_files: true

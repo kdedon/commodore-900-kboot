@@ -5,6 +5,7 @@
 #   make size   report the segment sizes of an existing build/kboot
 #   make deps   acquire what DEPS says this repository consumes
 #   make compiler-info   what COMPILER= resolved to, or why it did not
+#   make headers-dist    package include/bootinfo.h, the loader->kernel ABI
 #   make clean  remove build/ and tests/build/
 #
 # The loader is compiled by the Z8001 cross passes out of the toolchain release
@@ -13,7 +14,7 @@
 
 SHELL = /bin/sh
 .DELETE_ON_ERROR:
-.PHONY: all test size deps clean help
+.PHONY: all test size deps clean help headers-dist
 
 # Set before the include: mk/compiler.mk defines the first target make would
 # otherwise take as the default goal.
@@ -21,9 +22,9 @@ SHELL = /bin/sh
 include mk/compiler.mk
 
 # Goals that must work with no compiler present: `deps' is how one is obtained,
-# `compiler-info' exists to report that there is none, and the tests build with
-# the host cc.
-FREE = clean test deps compiler-info help
+# `compiler-info' exists to report that there is none, the tests build with
+# the host cc, and headers-dist copies a header nobody compiles.
+FREE = clean test deps compiler-info help headers-dist
 ifeq ($(strip $(MAKECMDGOALS)),)
 NEED = all
 else
@@ -61,6 +62,7 @@ help:
 	  'make size            check loader size limits' \
 	  'make compiler-info   show the selected compiler' \
 	  'make deps            fetch inputs listed in DEPS' \
+	  'make headers-dist    package include/bootinfo.h' \
 	  'make clean           remove build products'
 
 # Never a prerequisite of a build: a build that silently fetched would decide
@@ -71,6 +73,12 @@ deps:
 test:
 	$(MAKE) -C tests
 	$(MAKE) -C tests mutate
+
+# The loader->kernel handoff, packaged apart from the loader binary: a kernel
+# build consumes this header and nothing else here.  KBVERSION names the tag
+# being released; unset, pack-headers.sh reads one off this checkout.
+headers-dist:
+	sh tools/pack-headers.sh $(KBVERSION)
 
 # crt.s self-relocation copy caps, in bytes.  MUST match TCOPY/DCOPY in
 # src/crt.s, which copies exactly this much of each segment.  Raising them puts
