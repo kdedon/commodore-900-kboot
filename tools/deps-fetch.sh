@@ -87,6 +87,12 @@ fetch_local() {
 	return 1
 }
 
+# The newest published release's tag, from the repository's release list.
+latest_tag() {
+	curl -fsL "https://api.github.com/repos/${1#https://github.com/}/releases/latest" |
+	sed -n 's/^[ \t]*"tag_name"[ \t]*:[ \t]*"\([^"]*\)".*/\1/p' | sed 1q
+}
+
 fetch_release() {
 	# $1 name  $2 url  $3 ref  $4 dest  $5 asset
 	if [ -d "$4" ]; then
@@ -94,6 +100,13 @@ fetch_release() {
 		return 0
 	fi
 	[ -n "$5" ] || { echo "$1: a release line needs an asset name" >&2; return 1; }
+	# `latest' names no tag, so the newest published one is asked for: the
+	# asset name and the download path both carry it.
+	if [ "$3" = latest ]; then
+		set -- "$1" "$2" "$(latest_tag "$2")" "$4" "$5"
+		[ -n "$3" ] || { echo "$1: no published release at $2" >&2; return 1; }
+		echo "$1: latest release is $3"
+	fi
 	case $(uname -s) in
 	Linux)			host=linux-x86_64.tar.gz ;;
 	MINGW*|MSYS*|CYGWIN*)	host=windows-x86_64.zip ;;

@@ -7,9 +7,10 @@
 # tools/deps.sh still does the finding, and a named variable still wins.
 #
 # kind git = one of ours, cloned to ../<name> and left floating on <ref>.
-# kind release = a binary, pinned by tag and unpacked under deps/.  <dest>
-# names that directory, for an asset that is not the publishing repository's
-# own product -- as `ours' is not.
+# kind release = a binary, unpacked under deps/.  <dest> names that
+# directory, for an asset that is not the publishing repository's own
+# product -- as `ours' is not.  <ref> is a tag, or `latest' to resolve the
+# newest published release at fetch time instead of a number chosen by hand.
 #
 # kboot is a Z8001 program and its whole outside world is a compiler and a way
 # to run one.  Nothing here boots anything, so there is no OS edge.
@@ -31,7 +32,9 @@
 #              line's url and tag change and nothing else does.
 #
 #   emu        THE RUNNER.  `ours' is a Z8001 compiler, so a host build of this
-#              loader is a series of guest processes under `c900 --exec'.
+#              loader is a series of guest processes under `c900 --exec'.  At
+#              `latest': nothing here depends on a particular emulator
+#              revision the way `ours' depends on a particular compiler.
 #
 #   toolchain  the same compiler built with gcc, for COMPILER=cross: many times
 #              faster, and what a developer iterating wants.  Floating, because
@@ -40,5 +43,5 @@
 #              needs neither of the edges above.
 
 ours       release  https://github.com/kdedon/commodore-900-toolchain  fallback-1                @REF@-ours.tar.gz  env-ours
-emu        release  https://github.com/kdedon/commodore-900-emulator   v0.1                    c900-@REF@-@HOST@
+emu        release  https://github.com/kdedon/commodore-900-emulator   latest                    c900-@REF@-@HOST@
 toolchain  git      https://github.com/kdedon/commodore-900-toolchain  main
