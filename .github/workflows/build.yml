@@ -11,13 +11,12 @@
 # has, and neither of which is needed to see an unresolved symbol.
 #
 # WHAT THIS DOES AND DOES NOT PROVE.  The compiler here is a BINARY -- the
-# pinned `ours' dist, the self-hosted Z8001 passes run under the emulator -- so
-# a green run says the loader builds with the compiler a real machine would use
-# and fits its budgets.  It does NOT check that compiler's own sources: that
-# gate lives in commodore-900-toolchain, on the build the dist was cut from,
-# and moving to a newer compiler is a DEPS edit, reviewed like any other.  The
-# floating source-level check in the other direction is the toolchain's own
-# consumer link, which builds this loader on every push there.
+# Z8001 cross passes out of the toolchain release DEPS names -- so a green run
+# says the loader builds with the published compiler and fits its budgets.  It
+# does NOT check that compiler's own sources: that gate lives in
+# commodore-900-toolchain, on the build the release was cut from.  The
+# source-level check in the other direction is the toolchain's own consumer
+# link, which builds this loader on every push there.
 name: build
 
 on:
@@ -36,23 +35,23 @@ jobs:
       # job compiles Z8001 code with Z8001 binaries.  Each edge is placed by
       # name, so a missing release fails the run saying which one -- a step
       # that could not run must never pass quietly.
-      - name: The compiler dist
-        run: make deps DEP=ours
+      - name: The compiler
+        run: make deps DEP=toolchain
       - name: The emulator
         run: make deps DEP=emu
 
       # Which compiler this run used, in the log, before anything is built.
       - name: What is in it
-        run: cat deps/env-ours/.provenance
+        run: cat deps/commodore-900-toolchain/.provenance
 
       # Set, never searched: a job that depended on directory adjacency breaks
       # the first time a runner image moves its checkouts.  The search has its
       # own test in resolver-isolation.yml.
       - name: Link the loader
         env:
-          C900_ENV: ${{ github.workspace }}/deps/env-ours
+          C900_TOOLCHAIN: ${{ github.workspace }}/deps/commodore-900-toolchain
           C900_EMU: ${{ github.workspace }}/deps/commodore-900-emulator/bin/c900
-        run: make COMPILER=ours
+        run: make
 
       - name: The host tests
         run: make test

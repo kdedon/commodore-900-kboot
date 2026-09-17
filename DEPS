@@ -6,42 +6,26 @@
 # what is consumed, not a resolver: nothing in the build reads this file.
 # tools/deps.sh still does the finding, and a named variable still wins.
 #
-# kind git = one of ours, cloned to ../<name> and left floating on <ref>.
 # kind release = a binary, unpacked under deps/.  <dest> names that
-# directory, for an asset that is not the publishing repository's own
-# product -- as `ours' is not.  <ref> is a tag, or `latest' to resolve the
-# newest published release at fetch time instead of a number chosen by hand.
+# directory and defaults to the url's basename, which is right when the asset
+# is the publishing repository's own product.  <ref> is a tag, or `latest' to
+# resolve the newest published release at fetch time instead of a number
+# chosen by hand.
 #
 # kboot is a Z8001 program and its whole outside world is a compiler and a way
 # to run one.  Nothing here boots anything, so there is no OS edge.
 #
-#   ours       THE COMPILER, as a dist: the `ours' guest root -- cc0/cc1/cc2,
-#              as and ld as Z8001 binaries, with the C library and headers they
-#              were built against.  A consumer needs no toolchain checkout, no
-#              OS checkout and no compiler build; it unpacks this and compiles.
-#              Pinned, because a compiler is a binary and "which one built
-#              this" has to be a number chosen in advance rather than a branch
-#              tip; the unpacked root's .provenance answers it from the other
-#              end.
+#   toolchain  THE COMPILER: cc0/cc1/cc2, as and ld, built for the host, taken
+#              as the kernel and CP/M take them.  The archive lays out a
+#              host/build view whose paths are the ones a built checkout
+#              spells, so a build never learns which shape it got, and a
+#              developer iterating names a checkout of their own with
+#              C900_TOOLCHAIN.
 #
-#              A BOOTSTRAP EDGE.  The toolchain repository publishes it only
-#              because commodore-900-coherent is unpublished and the
-#              toolchain <-> OS cycle has to be broken somewhere.  The image
-#              belongs in the OS repository's dist package -- that repository
-#              owns libc, csu and the headers -- and when it ships one, this
-#              line's url and tag change and nothing else does.
-#
-#   emu        THE RUNNER.  `ours' is a Z8001 compiler, so a host build of this
-#              loader is a series of guest processes under `c900 --exec'.  At
+#   emu        THE RUNNER, for the tests: what a test here compiles is a Z8001
+#              program, and `c900 --exec' is what runs one on a host.  At
 #              `latest': nothing here depends on a particular emulator
-#              revision the way `ours' depends on a particular compiler.
-#
-#   toolchain  the same compiler built with gcc, for COMPILER=cross: many times
-#              faster, and what a developer iterating wants.  Floating, because
-#              that is the version under development and a change there
-#              breaking this link is what the check is for.  COMPILER=cross
-#              needs neither of the edges above.
+#              revision.
 
-ours       release  https://github.com/kdedon/commodore-900-toolchain  fallback-1                @REF@-ours.tar.gz  env-ours
-emu        release  https://github.com/kdedon/commodore-900-emulator   latest                    c900-@REF@-@HOST@
-toolchain  git      https://github.com/kdedon/commodore-900-toolchain  main
+toolchain  release  https://github.com/kdedon/commodore-900-toolchain  latest  c900-toolchain-@REF@-@HOST@
+emu        release  https://github.com/kdedon/commodore-900-emulator   latest  c900-@REF@-@HOST@

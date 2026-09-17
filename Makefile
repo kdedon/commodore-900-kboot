@@ -7,9 +7,9 @@
 #   make compiler-info   what COMPILER= resolved to, or why it did not
 #   make clean  remove build/ and tests/build/
 #
-# The compiler is selected, not hard-coded: COMPILER=ours (the default) builds
-# with the self-hosted Z8001 compiler under the emulator, COMPILER=cross with
-# the gcc-built host cross compiler.  mk/compiler.mk holds the flavours.
+# The loader is compiled by the Z8001 cross passes out of the toolchain release
+# DEPS names, called in sequence -- the way the kernel and CP/M compile for this
+# machine.  mk/compiler.mk holds the selection.
 
 SHELL = /bin/sh
 .DELETE_ON_ERROR:
@@ -57,7 +57,6 @@ all: $(LOADER)
 help:
 	@printf '%s\n' \
 	  'make                 build build/kboot' \
-	  'make COMPILER=cross  use the host cross-compiler' \
 	  'make test            run host and mutation tests' \
 	  'make size            check loader size limits' \
 	  'make compiler-info   show the selected compiler' \
