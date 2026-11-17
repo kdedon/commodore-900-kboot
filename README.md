@@ -6,19 +6,18 @@ the disk layout and boot flags to it.
 
 ## Build and test
 
-    make deps
+    make deps             fetch the toolchain and emulator releases DEPS names
     make                  build build/kboot
-    make COMPILER=cross   use the host cross-compiler
     make test             run host tests and mutation tests
     make size             check loader size limits
+    make headers-dist     package include/*.h
     make compiler-info
     make clean
     make help
 
-The default `COMPILER=ours` runs the self-hosted Z8001 tools through the
-emulator. `COMPILER=cross` uses a built `commodore-900-toolchain` checkout and
-is faster. Select local inputs with `C900_ENV`, `C900_EMU`, or
-`C900_TOOLCHAIN`.
+kboot is built with the `commodore-900-toolchain` Z8001 cross compiler.
+`C900_TOOLCHAIN` names a release or a built checkout, and `C900_EMU` the
+emulator.
 
 `make size` checks both the loader's segment-copy limits and the boot-ROM disk
 span. An oversized loader is rejected.
@@ -57,7 +56,9 @@ whichever system boots. Memory is a list of RAM runs, not one extent, because
 the ROM's memory test marches whole 64 KB segments and the framebuffers answer
 it -- the text RAM mirrors through segment 0x37 and a hi-res bitmap answers at
 0x3E and 0x3F. `include/memmap.h` is the table of what those segments are, and
-kboot subtracts it from the range the ROM reports. `reserve` takes out a range
+kboot subtracts it from the range the ROM reports. A ROM with a C9RC block
+supplies its RAM runs and bad segments instead, and its HR board and serial
+channels. `reserve` takes out a range
 as well, for a board this loader knows nothing about, and `memtop` names the
 highest segment to use -- it only ever lowers the ROM's top, never raises it.
 Segment numbers are decimal or `0x` hex, and `reserve` includes both ends.
@@ -65,8 +66,8 @@ Segment numbers are decimal or `0x` hex, and `reserve` includes both ends.
 `flags` and `console` belong to the `os` entry above them. `console` says
 which console that system is handed as `bi_console`, which it uses without
 probing: `serial` hands over the serial line as written; `probe`, and no
-`console` line at all, has kboot test the hi-res framebuffer and then the
-low-res one, and hand over the card that answers, or the serial line when
+`console` line at all, has kboot test the hi-res framebuffer, the low-res one
+and then the LC (8563) card, and hand over the first that answers, or the serial line when
 neither does. No value forces video, because an entry pinned to a card that
 is not fitted would boot unusable. Only an entry that takes a handoff (`part`
 or `flags`) is told anything.
