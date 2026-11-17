@@ -61,15 +61,15 @@ coninit()
 
 	/* Which console the ROM chose.  LR and HR are one case: they differ in
 	 * how they draw, not in how they are read. */
+	rc = *(char **)ROMV_CONFP;
 	ckind = C_SER;
-	if (*(char *)ROMV_CONALT != 0 || *(char *)ROMV_CONHIRES != 0)
+	if (rc[ROMC_HIRES] != 0 || *ROMV_CONLORES != 0)
 		ckind = C_VID;
 	esc = 0;
 	tk = 0;
 
 	/* rom_ctype, byte 14 of romconf: 1 = 6 MHz.  Anything else reads as
 	 * 4 MHz, which makes the countdown longer rather than shorter. */
-	rc = *(char **)ROMV_CONFP;
 	tc = (rc[ROMC_CTYPE] == 1) ? CLK6MHZ : CLK4MHZ;
 
 	outb(CT3MS, CT3_CONT);

@@ -1,6 +1,7 @@
 /*
- * romabi.h -- entry points and state of the stock C900 boot ROM
- * (boot-L/H_V_1.0), for kboot to reuse.
+ * romabi.h -- entry points and state of the C900 boot ROM, for kboot to
+ * reuse.  The addresses below are V1.0's.  A later ROM has a service table
+ * at ROMABI instead, and romjt() points romsv[] and romvar[] into it.
  *
  * The ROM is MWC-Coherent-C for the Z8001, the same calling convention this
  * loader is compiled with: args pushed right to left, long and pointer
@@ -37,24 +38,32 @@
 #ifndef ROMABI_H
 #define ROMABI_H
 
+/* These stay put in every ROM. */
 #define ROM_JMP		0x0234
 #define ROM_LDIRB	0x0274
 #define ROM_PCLEAR	0x0286
 #define ROM_SEGLOAD	0x023a
-#define ROM_WDGO	0x111e
-#define ROM_WDREAD	0x11a6
-#define ROM_VREAD	0x1fac
-#define ROM_DIRLOOK	0x1a0e
-#define ROM_IREAD	0x1e86
 
-/*
- * Console I/O dispatchers.  These follow whichever console the ROM selected
- * at boot, testing con_alt/con_hires below.  putchar/getchar expand '\n' to
- * CR+LF; getchar blocks and echoes.
- */
-#define ROM_PUTCHAR	0x0fc2
-#define ROM_GETCHAR	0x104a
-#define ROM_PUTS	0x0900
+/* The service table: "C9JT", then at offset 8 a far pointer to the ROM's
+ * array of variable addresses.  Service n is a long jp at ROMSVC(n). */
+#define ROMABI		0x029eL
+#define ROMABI_MAGIC	0x43394a54L
+#define ROMSVC(n)	(ROMABI + 16 + 8 * (n))
+
+/* romsv[] slots, in the table's own order.  The console dispatchers follow
+ * whichever console the ROM selected at boot, testing has_hires and the
+ * low-res flag below.  putchar/getchar expand '\n' to CR+LF; getchar blocks
+ * and echoes. */
+#define RS_PUTCHAR	0
+#define RS_GETCHAR	1
+#define RS_PUTS		2
+#define RS_WDGO		3
+#define RS_WDREAD	4
+#define RS_IREAD	5
+#define RS_DIRLOOK	6
+#define RS_VREAD	7
+#define NRS			8
+extern long		romsv[NRS];
 
 /*
  * The pieces getchar()'s VIDEO path is built from, which a countdown needs
@@ -74,27 +83,28 @@
  */
 #define ROM_INB		0x020a
 #define ROM_OUTB	0x021c
-#define ROM_KBDINIT	0x3ed4
-#define ROM_KBDPOLL	0x3f1e
-#define ROM_KBDDEC	0x3f62
 
 /* The segment-1 cells above, as CPU far pointers: a Z8001 far pointer holds
- * the segment in the HIGH BYTE, (seg<<24)|off, not the ROM's laddr() form. */
-#define ROMV_UNIT		0x0100123aL
-#define ROMV_DOFFSET	0x01001236L
-#define ROMV_DREAD		0x0100123cL
-#define ROMV_HDF		0x01001558L
-#define ROMV_FDF		0x0100182eL
-#define ROMV_BUF		0x01001240L
-/* The ROM's console selection, which putchar/getchar dispatch on.  Both zero
- * is the serial SCC. */
-#define ROMV_CONALT		0x010017ffL	/* != 0: low-res video */
-#define ROMV_CONHIRES	0x01001800L	/* != 0: hi-res video */
-#define ROMV_GETINIT	0x0100041cL	/* getchar's keyboard-initialised flag */
+ * the segment in the HIGH BYTE, (seg<<24)|off, not the ROM's laddr() form.
+ * romvar[] holds the ones kboot uses. */
+#define RV_UNIT		0
+#define RV_DOFFSET	1
+#define RV_BUF		2
+#define RV_GETINIT	3	/* getchar's keyboard-initialised flag */
+#define RV_CONLR	4	/* != 0: the ROM's console is low-res video */
+#define NRV			5
+extern char		*romvar[NRV];
+#define ROMV_UNIT		romvar[RV_UNIT]
+#define ROMV_DOFFSET	romvar[RV_DOFFSET]
+#define ROMV_BUF		romvar[RV_BUF]
+#define ROMV_GETINIT	romvar[RV_GETINIT]
+#define ROMV_CONLORES	romvar[RV_CONLR]
+
 /* Segment 1 offset 0 holds a POINTER to the ROM's romconf block.  Its fields,
  * by byte offset: rom_bram and rom_eram are what the memory test found, in
  * 1 KB clicks, the first click and one past the last; rom_ctype is 0 for
- * 4 MHz and 1 for 6 MHz; has_hires is non-zero when an HR board is fitted. */
+ * 4 MHz and 1 for 6 MHz; has_hires is non-zero when an HR board is
+ * fitted, and is also the ROM's hi-res console flag. */
 #define ROMV_CONFP		0x01000000L
 #define ROMC_BRAM		0	/* 2 bytes */
 #define ROMC_ERAM		2	/* 2 bytes */
@@ -102,19 +112,19 @@
 #define ROMC_HIRES		15
 
 /* Callable aliases: a segmented indirect call through a far function pointer
- * (segment 0 : offset) reaches the ROM and returns.  crt.s calls the address
- * constants directly instead. */
+ * (segment 0 : offset) reaches the ROM and returns.  crt.s reads romsv[] and
+ * romvar[] itself. */
 struct	cohino;
-#define iread(ino)			((struct cohino *(*)())ROM_IREAD)(ino)
-#define wdread(u,blk,buf)	((int (*)())ROM_WDREAD)((int)(u), \
+#define iread(ino)			((struct cohino *(*)())romsv[RS_IREAD])(ino)
+#define wdread(u,blk,buf)	((int (*)())romsv[RS_WDREAD])((int)(u), \
 					(unsigned long)(blk),(unsigned long)(buf))
-#define dirlook(ip,nm,inop)	((char *(*)())ROM_DIRLOOK)(ip,nm,inop)
-#define vread()				((int (*)())ROM_VREAD)()
+#define dirlook(ip,nm,inop)	((char *(*)())romsv[RS_DIRLOOK])(ip,nm,inop)
+#define vread()				((int (*)())romsv[RS_VREAD])()
 #define ldirb(src,dst,n)	((int (*)())ROM_LDIRB)((unsigned long)(src),(unsigned long)(dst),(unsigned)(n))
 #define pclear(segoff,n)	((int (*)())ROM_PCLEAR)((unsigned long)(segoff),(unsigned)(n))
-#define putchar(c)			((int (*)())ROM_PUTCHAR)((int)(c))
-#define getchar()			((int (*)())ROM_GETCHAR)()
-#define puts(s)				((int (*)())ROM_PUTS)((char *)(s))
+#define putchar(c)			((int (*)())romsv[RS_PUTCHAR])((int)(c))
+#define getchar()			((int (*)())romsv[RS_GETCHAR])()
+#define puts(s)				((int (*)())romsv[RS_PUTS])((char *)(s))
 #define inb(p)				((int (*)())ROM_INB)((unsigned)(p))
 #define outb(p,v)			((int (*)())ROM_OUTB)((unsigned)(p),(int)(v))
 

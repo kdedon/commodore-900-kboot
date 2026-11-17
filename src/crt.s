@@ -18,8 +18,9 @@
 /   0x0F0000           kboot data copy (DSCR/seg 0x31 after remap)
 /
 / The relocation copies are bounded to TCOPY/DCOPY bytes because a 512 KB
-/ machine's ROM keeps its live segment-1 data at phys 0x0FE400..0x0FFFFF, in
-/ the tail of the data-copy page.  The Makefile checks the linked sizes fit.
+/ machine's ROM keeps its live segment-1 data at the top of memory (from 0x0FE400,
+/ or 0x0FD000 on newer ROMs), in the tail of the data-copy page.  The Makefile
+/ checks the linked sizes fit.
 /
 / MMU (Z8010 #1) descriptor load, as the ROM's segload does it:
 /   soutb 0x01fc,<seg>                             select descriptor
@@ -122,12 +123,12 @@ hang:
 	halt
 	jr	hang
 
-/ setdoff_(long base) -- set the ROM's doffset cell (seg1:0x1236), which it
-/ adds to every logical fs block, so retargets iread/dirlook onto a partition.
-	.globl	setdoff_
+/ setdoff_(long base) -- set the ROM's doffset cell, which it adds to every
+/ logical fs block, so retargets iread/dirlook onto a partition.
+	.globl	setdoff_, romsv_, romvar_
 setdoff_:
 	ldl	rr2, rr14(4)		/ base (long arg)
-	ldl	rr4, $0x01001236	/ far ptr seg1:0x1236
+	ldl	rr4, romvar_+4		/ romvar[RV_DOFFSET]
 	ldl	@rr4, rr2
 	ret
 
@@ -162,7 +163,7 @@ setgeom_:
 	/ wdgo(cmd) returns straight to our caller
 	ldl	rr2, $0x24000000
 	ldl	rr14(4), rr2
-	ldl	rr4, $0x111e		/ ROM_WDGO
+	ldl	rr4, romsv_+12		/ romsv[RS_WDGO]
 	jp	@rr4
 
 / mapseg_(seg, basepage, attr) -- program one Z8010 descriptor.

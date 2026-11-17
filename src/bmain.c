@@ -514,6 +514,7 @@ bmain()
 	unsigned ds, bds, entry, dbpage, nts;
 	unsigned long is, tround, rem, n;
 
+	romjt();
 	puts("\nkboot: Commodore 900 boot\n");
 	coninit();			/* the tick source and the key path */
 	loadcfg();
