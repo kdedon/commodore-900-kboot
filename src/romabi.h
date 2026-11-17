@@ -91,10 +91,15 @@
 #define ROMV_CONALT		0x010017ffL	/* != 0: low-res video */
 #define ROMV_CONHIRES	0x01001800L	/* != 0: hi-res video */
 #define ROMV_GETINIT	0x0100041cL	/* getchar's keyboard-initialised flag */
-/* Segment 1 offset 0 holds a POINTER to the ROM's romconf block, whose byte
- * at offset 14 is rom_ctype: 0 = 4 MHz, 1 = 6 MHz. */
+/* Segment 1 offset 0 holds a POINTER to the ROM's romconf block.  Its fields,
+ * by byte offset: rom_bram and rom_eram are what the memory test found, in
+ * 1 KB clicks, the first click and one past the last; rom_ctype is 0 for
+ * 4 MHz and 1 for 6 MHz; has_hires is non-zero when an HR board is fitted. */
 #define ROMV_CONFP		0x01000000L
+#define ROMC_BRAM		0	/* 2 bytes */
+#define ROMC_ERAM		2	/* 2 bytes */
 #define ROMC_CTYPE		14
+#define ROMC_HIRES		15
 
 /* Callable aliases: a segmented indirect call through a far function pointer
  * (segment 0 : offset) reaches the ROM and returns.  crt.s calls the address

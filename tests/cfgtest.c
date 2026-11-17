@@ -15,6 +15,7 @@
 #include <string.h>
 #include "../src/kboot.h"
 #include <bootinfo.h>
+#include <memmap.h>
 
 /* The shipped sample, as reached from tests/.  The makefile names it. */
 #ifndef CFGSAMPLE
@@ -693,6 +694,109 @@ t_sample()
 	OK("bare: swaptop", bi.bi_swaptop, 7000);
 }
 
+/*
+ * The memory map.  The ROM reports ONE range and the framebuffers answer its
+ * test from inside it, so the arithmetic below is the whole reason a map
+ * exists: taking the range whole hands a system the screen to allocate.
+ *
+ * The range used here is a 4 MB machine as the ROM sees it: segments 0x08
+ * through 0x3f, which in the ROM's 1 KB clicks is 0x0200 up to 0x1000.
+ */
+#define ROMBOT	MM_SEG(0x0200)
+#define ROMTOP	MM_SEG(0x1000)
+
+static void
+t_memmap()
+{
+	printf("the memory map\n");
+	OK("clicks convert to segments", ROMBOT, 8);
+	OK("and the top does too", ROMTOP, 0x40);
+
+	/* An HR machine: the text RAM at 0x37 is a hole in the middle, and the
+	 * bitmap plus the ROM's own segment close the top. */
+	parse("geom 704 7 17 352\nos a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("a hole in the middle gives two runs", bi.bi_nram, 2);
+	OK("the first run starts above the ROM", bi.bi_ram[0].br_first, 0x08);
+	OK("and stops below the text RAM", bi.bi_ram[0].br_count, 0x37 - 0x08);
+	OK("the second starts above it", bi.bi_ram[1].br_first, 0x38);
+	OK("and stops below the bitmap", bi.bi_ram[1].br_count, 0x3e - 0x38);
+	OK("unused slots are zero", bi.bi_ram[2].br_count, 0);
+
+	/* No HR board: 0x3e is ordinary RAM, and 0x3f is still out because the
+	 * ROM keeps it for itself. */
+	cfgmem(ROMBOT, ROMTOP, 0);
+	OK("without a bitmap, still two runs", bi.bi_nram, 2);
+	OK("the second run reaches 0x3e", bi.bi_ram[1].br_count, 0x3f - 0x38);
+
+	/* `reserve' takes a range out on top of the built-in table, splitting
+	 * the run it falls in. */
+	parse("reserve 0x20 0x21\nos a 136 coherent part\n");
+	OK("the line was kept", ncfgres, 1);
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("reserve splits a run in two", bi.bi_nram, 3);
+	OK("the run below it", bi.bi_ram[0].br_count, 0x20 - 0x08);
+	OK("the run above it", bi.bi_ram[1].br_first, 0x22);
+	OK("as far as the text RAM", bi.bi_ram[1].br_count, 0x37 - 0x22);
+	OK("and the old top run last", bi.bi_ram[2].br_first, 0x38);
+
+	/* `memtop' lowers the top: everything above it goes, holes and all. */
+	parse("memtop 0x1f\nos a 136 coherent part\n");
+	OK("the segment was read", cfgtop, 0x1f);
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("memtop lowering leaves one run", bi.bi_nram, 1);
+	OK("which ends where it said", bi.bi_ram[0].br_count, 0x20 - 0x08);
+
+	/* Decimal is the same number written another way. */
+	parse("memtop 31\nos a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("decimal reads as the same segment", bi.bi_ram[0].br_count,
+	   0x20 - 0x08);
+
+	/* ABOVE the ROM's top it is IGNORED.  Memory that did not answer the
+	 * memory test is not there because a config file says it is. */
+	parse("memtop 0xff\nos a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("memtop above the ROM's top is ignored", bi.bi_nram, 2);
+	OK("the top run is the ROM's", bi.bi_ram[1].br_count, 0x3e - 0x38);
+	parse("memtop 0x3f\nos a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("naming the ROM's own top changes nothing",
+	   bi.bi_ram[1].br_count, 0x3e - 0x38);
+
+	/* A machine whose memory stops below the framebuffers has one run and
+	 * no hole: the map is what was found, not what could be fitted. */
+	parse("os a 136 coherent part\n");
+	cfgmem(ROMBOT, MM_SEG(0x0800), 1);
+	OK("2 MB is one run", bi.bi_nram, 1);
+	OK("of everything above the ROM", bi.bi_ram[0].br_count, 0x20 - 0x08);
+
+	/* Malformed and out-of-range lines name no memory and are dropped. */
+	parse("reserve 0x21 0x20\nreserve 0x20\nreserve 0x20 0x100\n"
+	      "os a 136 coherent part\n");
+	OK("a reversed, short or too-high range is dropped", ncfgres, 0);
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("so the map is the built-in one", bi.bi_nram, 2);
+	OK("with nothing taken out of it", bi.bi_ram[0].br_count, 0x37 - 0x08);
+
+	/* More `reserve' lines than the loader holds: the ones it keeps are
+	 * the first, and they all still fit in the map's slots. */
+	parse("reserve 0x10 0x10\nreserve 0x14 0x14\nreserve 0x18 0x18\n"
+	      "reserve 0x1c 0x1c\nreserve 0x24 0x24\n"
+	      "os a 136 coherent part\n");
+	OK("lines past CFGRES are dropped", ncfgres, CFGRES);
+	cfgmem(ROMBOT, ROMTOP, 1);
+	OK("four splits and the built-in hole", bi.bi_nram, 6);
+	OK("every run fits the block's slots", bi.bi_nram <= BI_NRAM, 1);
+	OK("the last is still the top one", bi.bi_ram[5].br_first, 0x38);
+
+	/* No line at all: the map is the built-in table's, which is what a
+	 * stock machine gets. */
+	parse("os a 136 coherent part\n");
+	OK("no memtop line", cfgtop, -1);
+	OK("no reserve lines", ncfgres, 0);
+}
+
 int
 main()
 {
@@ -707,6 +811,7 @@ main()
 	t_system();
 	t_console();
 	t_sample();
+	t_memmap();
 	if (fails)
 		printf("cfgtest: %d FAILED\n", fails);
 	else

@@ -7,7 +7,9 @@
  * written into it and nothing said about it, and only an entry that ASKED for
  * a handoff can fail to get one.  Any system that wants a partition table or
  * the boot flags can carry the block and be handed one -- nothing here is
- * particular to the system that happens to use it first.
+ * particular to the system that happens to use it first.  Version 5 carries
+ * the MEMORY MAP as well, which is the one thing here no system can work out
+ * for itself: the ROM's memory test cannot tell RAM from a framebuffer.
  *
  * A system with no bootinfo runs on whatever it knows by itself; a bad magic,
  * version, length, checksum or count is damage -- kboot refuses the entry.
@@ -22,9 +24,19 @@
 
 #define	BI_MAGLEN	8
 #define	BI_MAGIC	{ 'K', 'B', 'O', 'O', 'T', 'P', 'T', 'B' }
-#define	BI_VERSION	4			/* 4 added bi_serial */
+#define	BI_VERSION	5			/* 5 added the memory map */
 #define	BI_OLDEST	2			/* 2 added bi_src + the swap extent */
 #define	BI_NPART	16			/* wd(4) pseudo-drives: /dev/hd0..hd15 */
+
+/*
+ * BI_NRAM -- slots for the memory map, which is a LIST because the ROM's
+ * range encloses framebuffers (memmap.h).  The built-in reserved table cuts
+ * the 16 MB space into at most three runs -- below the LR text RAM, between it
+ * and the HR bitmap, and above the 4 MB the motherboard decodes -- and each
+ * `reserve' line of the loader's config can split one run in two, of which
+ * that config holds at most four.  Seven, rounded up.
+ */
+#define	BI_NRAM		8
 
 #define	BI_SRC_KERNEL	0		/* the compiled-in (generated) table */
 #define	BI_SRC_KBOOT	1		/* handed over by the loader */
@@ -98,6 +110,18 @@
 #define	BI_SER_CON	0x0001	/* bit 0: the line the boot ROM consoles on */
 
 /*
+ * One run of RAM: 64 KB segments br_first .. br_first+br_count-1, every one of
+ * which answered the ROM's memory test and is not reserved.  A system may
+ * allocate the whole of a run and must allocate NOTHING outside one; a slot
+ * with br_count 0 is unused, and slots follow one another in ascending order
+ * with at least one reserved segment between them.
+ */
+struct	biram {
+	unsigned short	br_first;	/* first segment of the run */
+	unsigned short	br_count;	/* segments in it (0 = slot unused) */
+};
+
+/*
  * One pseudo-drive: /dev/hdN spans bstart .. bstart+bcount-1 of the physical
  * drive.  The driver refuses a block at or past bcount, so an all-zero slot is
  * unused and every access to it fails.
@@ -128,6 +152,12 @@ struct	bootinfo {
 	unsigned short	bi_console;	/* BI_CON_*: where the operator is */
 	/* --- version 4 ------------------------------------------------- */
 	unsigned short	bi_serial;	/* serial channels found, one bit each */
+	/* --- version 5 ------------------------------------------------- */
+	/* The memory map: bi_nram runs, the rest of the slots zero.  A block
+	 * older than this carries no map, and a system reading none has only
+	 * the ROM's range, framebuffers and all. */
+	unsigned short	bi_nram;
+	struct biram	bi_ram[BI_NRAM];
 };
 
 /*
@@ -140,7 +170,9 @@ struct	bootinfo {
  */
 #define	BI_TAIL3	4		/* bi_flags + bi_console */
 #define	BI_TAIL4	2		/* bi_serial */
-#define	BI_LEN4		(sizeof (struct bootinfo))
+#define	BI_TAIL5	(2 + BI_NRAM * sizeof (struct biram))	/* the map */
+#define	BI_LEN5		(sizeof (struct bootinfo))
+#define	BI_LEN4		(BI_LEN5 - BI_TAIL5)
 #define	BI_LEN3		(BI_LEN4 - BI_TAIL4)
 #define	BI_LEN2		(BI_LEN3 - BI_TAIL3)
 
@@ -157,6 +189,8 @@ bilen(v) unsigned v;
 		return ((unsigned short)BI_LEN3);
 	if (v == 4)
 		return ((unsigned short)BI_LEN4);
+	if (v == 5)
+		return ((unsigned short)BI_LEN5);
 	return (0);
 }
 

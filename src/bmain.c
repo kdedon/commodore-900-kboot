@@ -11,6 +11,7 @@
  */
 #include "cohfs.h"
 #include <bootinfo.h>
+#include <memmap.h>
 #include "romabi.h"
 #include "kboot.h"
 #include "con.h"
@@ -380,6 +381,7 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 	unsigned off, lim, kver, klen, con;
 	register char *p;
 	register int i;
+	char *rc;
 
 	/* Bound the scan by the SMALLEST block any kernel may carry, so a
 	 * block in the last bytes of the data segment is still found. */
@@ -422,6 +424,12 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 	 * follows that decision too.  The ROM's flags say only where this
 	 * loader's own menu went, which is not the system's console. */
 	con = oslist[k].conser ? BI_CON_SER : vidprobe();
+	/* The memory map, over whatever the kernel's own block declared: the
+	 * ROM's rom_bram/rom_eram range less the segments no system may
+	 * allocate.  In clicks in the ROM's block, in segments here. */
+	rc = *(char **)ROMV_CONFP;
+	cfgmem(MM_SEG(mw(rc + ROMC_BRAM)), MM_SEG(mw(rc + ROMC_ERAM)),
+		rc[ROMC_HIRES] != 0);
 	/* Fill down to what this kernel declared, never up to what this loader
 	 * knows. */
 	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags, con,

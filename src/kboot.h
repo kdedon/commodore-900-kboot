@@ -26,6 +26,7 @@
 #define CFGBLK	2			/* KNOB: 512-byte blocks of kboot.cfg read */
 #define CFGMAX	(CFGBLK * 512)
 #define MAXOS	8			/* KNOB: `os' entries the menu holds */
+#define CFGRES	4			/* KNOB: `reserve' lines kept (bootinfo.h BI_NRAM) */
 
 struct osent {
 	char			label[LBLSZ];
@@ -78,6 +79,9 @@ extern int				cfgfault;
 /* A `flags' or `console' line stood where no entry owned it, and set
  * nothing. */
 extern int				cfgflgerr;
+/* `memtop', a segment number, and -1 for no line; then the `reserve' ranges. */
+extern int				cfgtop;
+extern int				ncfgres;
 
 extern int				streqoff();
 extern unsigned long	atoloff();
@@ -93,6 +97,10 @@ extern					cfgparse();
 /* Build bi/nparts for entry `k'.  Runs after the menu has chosen, so only the
  * layout that is booted is ever built. */
 extern					cfglayout();
+/* Build bi's memory map from the ROM's segment range [bot, top), the built-in
+ * reserved table and the `reserve' and `memtop' lines.  `hires' says an HR
+ * board is fitted. */
+extern					cfgmem();
 
 /* --- scc.c ---------------------------------------------------------------- */
 /* Is a Z8030 channel based at this I/O address really there?  Writes a pattern
@@ -114,6 +122,7 @@ extern unsigned			vidprobe();
  * gets. */
 #define BIU_FLAGS	0x0001	/* bi_flags + bi_console: older than version 3 */
 #define BIU_SERIAL	0x0002	/* bi_serial: older than version 4 */
+#define BIU_MEMMAP	0x0004	/* the memory map: older than version 5 */
 
 /* Fill a kernel's block down to the version it declared, and checksum it.
  * Returns the BIU_* bits it had no room for. */

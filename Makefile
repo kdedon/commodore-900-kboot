@@ -5,7 +5,7 @@
 #   make size   report the segment sizes of an existing build/kboot
 #   make deps   acquire what DEPS says this repository consumes
 #   make compiler-info   what COMPILER= resolved to, or why it did not
-#   make headers-dist    package include/bootinfo.h, the loader->kernel ABI
+#   make headers-dist    package include/*.h, the loader->kernel ABI
 #   make clean  remove build/ and tests/build/
 #
 # The loader is compiled by the Z8001 cross passes out of the toolchain release
@@ -62,7 +62,7 @@ help:
 	  'make size            check loader size limits' \
 	  'make compiler-info   show the selected compiler' \
 	  'make deps            fetch inputs listed in DEPS' \
-	  'make headers-dist    package include/bootinfo.h' \
+	  'make headers-dist    package include/*.h' \
 	  'make clean           remove build products'
 
 # Never a prerequisite of a build: a build that silently fetched would decide

@@ -7,8 +7,8 @@
  * and length the kernel was built for; a loader that knows more versions than
  * the kernel does writes the fields that kernel's version defines and NOT ONE
  * BYTE MORE, then checksums exactly that many bytes.  A kernel built against
- * version 2 boots off this loader unchanged, and so will a kernel built
- * against version 4 when there is a version 5.
+ * version 2 boots off this loader unchanged, and so does one built against
+ * version 4 now that there is a version 5.
  *
  * It is a separate file because it is pure: no ROM, no disk, no console, so
  * the host tests link it and run the real code rather than a copy of it.
@@ -49,6 +49,11 @@ unsigned serial;
 		bp->bi_serial = (unsigned short)serial;
 	else
 		miss |= BIU_SERIAL;
+	/* The map itself was built into the block before this (cfg.c cfgmem);
+	 * what is settled here is whether the kernel has the bytes to be given
+	 * it, since only klen of them are ever copied over. */
+	if (klen < BI_LEN5)
+		miss |= BIU_MEMMAP;
 	bp->bi_sum = 0;
 	bp->bi_sum = -bisum(bp);
 	return (miss);

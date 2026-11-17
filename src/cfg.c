@@ -10,6 +10,7 @@
  */
 #include "kboot.h"
 #include <bootinfo.h>
+#include <memmap.h>
 
 char			cfg[CFGMAX];			/* kboot.cfg text */
 int				cfglen;
@@ -25,6 +26,13 @@ int				cfgflgerr;
  * the loaded kernel by bmain.c (include/bootinfo.h). */
 struct bootinfo	bi = { BI_MAGIC, BI_VERSION, sizeof (struct bootinfo) };
 int				nparts;			/* `part' lines seen */
+
+/* The `memtop' segment, -1 for no line, and the `reserve' ranges.  Both are
+ * the file's, not an entry's: the memory a framebuffer or a board is sitting
+ * in is the same whichever system boots. */
+int				cfgtop;
+struct memres	cfgres[CFGRES];
+int				ncfgres;
 
 /* --- helpers: no libc here, and tokens are cfg[] OFFSETS, not pointers -----
  * Nothing here writes cfg[], so the text can be walked more than once: the
@@ -67,6 +75,35 @@ atoloff(off) register int off;
 	while (off < cfglen && cfg[off] >= '0' && cfg[off] <= '9')
 		v = v * 10 + (cfg[off++] - '0');
 	return v;
+}
+
+/* A segment number at offset `off': decimal, or hex behind an 0x prefix,
+ * because that is how the segments of this machine are written down. */
+static unsigned long
+segoff(off) register int off;
+{
+	unsigned long v;
+	register int c;
+
+	if (off + 1 >= cfglen || cfg[off] != '0' ||
+	    (cfg[off + 1] != 'x' && cfg[off + 1] != 'X'))
+		return (atoloff(off));
+	off += 2;
+	v = 0;
+	while (off < cfglen) {
+		c = cfg[off];
+		if (c >= '0' && c <= '9')
+			c -= '0';
+		else if (c >= 'a' && c <= 'f')
+			c = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			c = c - 'A' + 10;
+		else
+			break;
+		v = v * 16 + c;
+		off++;
+	}
+	return (v);
 }
 
 copyoff(d, off, n) register char *d; register int off; int n;
@@ -193,6 +230,8 @@ cfgparse()
 	cfgwait = 0;
 	cfgdflt = 0;
 	cfgflgerr = 0;
+	cfgtop = -1;
+	ncfgres = 0;
 	owner = sys = LAYGLOB;
 	oidx = nsys = 0;
 	syslay = sysvoc = 0;
@@ -270,6 +309,27 @@ cfgparse()
 				oslist[owner].conser = 0;
 			else
 				oslist[owner].badflg |= BADCON;
+		} else if (nt >= 3 && streqoff(tok[0], "reserve")) {
+			/* reserve <first> <last> -- segments no system may
+			 * allocate, on top of the built-in table (memmap.h),
+			 * for a board this loader knows nothing about.  A
+			 * reversed or out-of-range pair names no memory and is
+			 * dropped; lines past CFGRES are dropped too. */
+			b = (unsigned)segoff(tok[1]);
+			j = (int)segoff(tok[2]);
+			if (ncfgres < CFGRES && j < MM_NSEG && (int)b <= j) {
+				cfgres[ncfgres].mr_first = (unsigned short)b;
+				cfgres[ncfgres].mr_last = (unsigned short)j;
+				cfgres[ncfgres].mr_why = MR_CONFIG;
+				cfgres[ncfgres].mr_when = MW_ALWAYS;
+				ncfgres++;
+			}
+		} else if (nt >= 2 && streqoff(tok[0], "memtop")) {
+			/* memtop <seg> -- the highest segment to use.  It only
+			 * ever LOWERS what the ROM's memory test found: memory
+			 * that did not answer the test is not there because a
+			 * config file says it is. */
+			cfgtop = (int)segoff(tok[1]);
 		} else if (nt >= 2 && streqoff(tok[0], "timeout")) {
 			/* timeout <seconds> before `default' boots on its own.
 			 * 0, and absence, both mean wait forever. */
@@ -379,5 +439,68 @@ cfglayout(k) int k;
 			bi.bi_swapbot = atoloff(tok[2]);
 			bi.bi_swaptop = atoloff(tok[3]);
 		}
+	}
+}
+
+/*
+ * Build the memory map bi.bi_ram/bi_nram: the segments [bot, top) the ROM's
+ * memory test answered for, less the built-in reserved table, less the
+ * `reserve' lines, with `memtop' applied.  `hires' says an HR board is fitted,
+ * which is what decides whether segment 0x3e is bitmap or ordinary RAM.
+ *
+ * One bit of working space per segment, then the runs are read off it.  That
+ * is longer than differencing intervals and it cannot get the overlaps wrong,
+ * which the reserved table has -- 0x3f is in it twice.
+ */
+static char	mmseg[MM_NSEG];		/* 1: this segment is RAM to allocate */
+
+static
+mmcut(rp, hires) register struct memres *rp; int hires;
+{
+	register int s;
+
+	if (rp->mr_when == (hires ? MW_NOHR : MW_HR))
+		return;
+	for (s = rp->mr_first; s <= (int)rp->mr_last && s < MM_NSEG; s++)
+		mmseg[s] = 0;
+}
+
+cfgmem(bot, top, hires) unsigned bot, top; int hires;
+{
+	register int s;
+	int i, first;
+
+	if (cfgtop >= 0 && (unsigned)cfgtop + 1 < top)
+		top = (unsigned)cfgtop + 1;
+	if (top > MM_NSEG)
+		top = MM_NSEG;
+	for (s = 0; s < MM_NSEG; s++)
+		mmseg[s] = (unsigned)s >= bot && (unsigned)s < top;
+	for (i = 0; i < MM_NRES; i++)
+		mmcut(&mmres[i], hires);
+	for (i = 0; i < ncfgres; i++)
+		mmcut(&cfgres[i], hires);
+
+	for (i = 0; i < BI_NRAM; i++) {
+		bi.bi_ram[i].br_first = 0;
+		bi.bi_ram[i].br_count = 0;
+	}
+	bi.bi_nram = 0;
+	for (s = 0; s < MM_NSEG; ) {
+		if (!mmseg[s]) {
+			s++;
+			continue;
+		}
+		first = s;
+		while (s < MM_NSEG && mmseg[s])
+			s++;
+		/* Out of slots: the runs kept are the low ones.  A system is
+		 * better off with less memory than with memory that is not
+		 * there, and the loader itself is running in the lowest. */
+		if (bi.bi_nram >= BI_NRAM)
+			break;
+		bi.bi_ram[bi.bi_nram].br_first = (unsigned short)first;
+		bi.bi_ram[bi.bi_nram].br_count = (unsigned short)(s - first);
+		bi.bi_nram++;
 	}
 }

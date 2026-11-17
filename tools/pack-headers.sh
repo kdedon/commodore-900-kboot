@@ -1,13 +1,13 @@
 #!/bin/sh
-# pack-headers.sh -- package include/bootinfo.h, the loader->kernel ABI, on
-# its own.
+# pack-headers.sh -- package the include/ headers, the loader->kernel ABI, on
+# their own.
 #
 #	sh tools/pack-headers.sh [VERSION] [DESTDIR]
 #
 # Writes c900-kboot-headers-v<V>.tar.gz.  VERSION defaults to a git describe
 # off this checkout, DESTDIR to build/dist.
 #
-# A kernel build compiles against this one header and needs nothing else from
+# A kernel build compiles against these headers and needs nothing else from
 # kboot: no binary, no source tree, no build of its own.  Packaged apart from
 # build/kboot so a header-only consumer -- what a KERNEL build is -- unpacks a
 # header-only archive instead of an archive built to run on the target.
@@ -23,7 +23,7 @@ name="c900-kboot-headers-v$V"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 A="$W/$name"
 mkdir -p "$A/include"
-cp "$HERE/include/bootinfo.h" "$A/include/"
+cp "$HERE"/include/*.h "$A/include/"
 echo "$V" > "$A/VERSION"
 mkdir -p "$DEST"
 (cd "$W" && tar czf "$name.tar.gz" "$name")

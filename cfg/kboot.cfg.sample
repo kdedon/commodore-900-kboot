@@ -1,11 +1,10 @@
 # kboot.cfg -- copy to the boot partition beside the loader and edit.
-# Read at most 1024 bytes, comments included: keep it short.
-# The format reference, and every limit, is in this repository's README.
+# Read at most 1024 bytes, comments included.  The README is the reference.
 
 # geom <cyl> <heads> <spt> <precomp>
 geom 1024 7 17 512
 
-# The default layout, before any `os' line: every entry inherits it whole.
+# The default layout, inherited whole by every entry below.
 # part <slot> <start> <blocks>, then swap <slot> <bot> <top>.
 part 0 0 136
 part 1 10336 13472
@@ -14,17 +13,20 @@ part 4 136 10200
 part 15 0 121856
 swap 3 2904 7000
 
+# reserve <first> <last> -- segments to keep out of the memory map.
+# memtop <seg> -- the highest segment to use; it only ever lowers.
+
 # bflag <NAME> <bit> -- boot-flag names of the kernel below, for the menu.
 bflag SINGLE 1
 
 # os <label> <base-block> <kernel-file> [part]
 os OpenCoherent-3.5 136 coherent part
-# flags <NAME> ... -- this entry boots with BF_SINGLE set: single user.
+# flags <NAME> ... -- this entry boots single user.
 flags SINGLE
-# console serial|probe -- the console it is handed; no line means probe.
+# console serial|probe -- no line means probe.
 console probe
 
-# No `part': no handoff, so no table, flag or console reaches it.
+# No `part': no handoff of any kind.
 os CPM-8000 58624 cpm.sys
 
 timeout 5

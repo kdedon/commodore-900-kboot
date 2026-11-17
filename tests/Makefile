@@ -166,6 +166,17 @@ mutate: kbdmutate | $(OUT)
 	if $(OUT)/m23 >/dev/null 2>&1; then \
 		echo "MUTATE FAIL: cfgtest passed a \`console serial' line that pins nothing"; fail=1; \
 	else echo "mutate ok: a serial pin ignored is caught"; fi; \
+	sed 's/if (cfgtop >= 0 \&\& (unsigned)cfgtop + 1 < top)/if (cfgtop >= 0)/' \
+		../src/cfg.c > $(OUT)/m26.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m26 cfgtest.c $(OUT)/m26.c 2>/dev/null; \
+	if $(OUT)/m26 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: cfgtest passed a \`memtop' that raises the ROM's top"; fail=1; \
+	else echo "mutate ok: memory conjured above what the ROM found is caught"; fi; \
+	sed 's/\t\tmmcut(&mmres\[i\], hires);/\t\t;/' ../src/cfg.c > $(OUT)/m27.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m27 cfgtest.c $(OUT)/m27.c 2>/dev/null; \
+	if $(OUT)/m27 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: cfgtest passed a map with the framebuffers still in it"; fail=1; \
+	else echo "mutate ok: a reserved segment left in the map is caught"; fi; \
 	sed 's/oslist\[owner\].badflg |= BADCON;/;/' ../src/cfg.c > $(OUT)/m24.c; \
 	$(HCC) $(HFLAGS) -o $(OUT)/m24 cfgtest.c $(OUT)/m24.c 2>/dev/null; \
 	if $(OUT)/m24 >/dev/null 2>&1; then \
