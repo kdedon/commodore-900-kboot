@@ -47,6 +47,8 @@
  * AND MUST BE ZERO.
  */
 #define	BF_SINGLE	0x0001	/* come up single user; do not run /etc/rc */
+#define	BF_HR1024	0x0002	/* the hi-res board is 1024x1024, which its
+				 * 404H cannot tell from 1024x800 */
 
 /*
  * bi_console -- which console the system is to use.  SER, LR and HR are a
