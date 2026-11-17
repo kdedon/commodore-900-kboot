@@ -51,23 +51,26 @@
 /*
  * bi_console -- which console the system is to use.  SER, LR and HR are a
  * DECISION: the system takes them as sent and does not probe.  kboot always
- * sends one of the three, per menu entry: a kboot.cfg `console serial' line
+ * sends one of those or LC, per menu entry: a kboot.cfg `console serial' line
  * hands over BI_CON_SER as written, and `console probe', or no line at all,
- * hands over what the framebuffer probe finds (src/vid.c: hi-res first,
- * then low-res), or BI_CON_SER when no card answers.  Nothing forces video,
+ * hands over what the video probe finds (src/vid.c: hi-res, then low-res,
+ * then the ID-probed cards), or BI_CON_SER when no card answers.  Nothing forces video,
  * because an entry pinned to a card that is not fitted would boot unusable.
  *
  * ANY and VID are what older loaders sent, which could tell serial from
  * video only (by the ROM's flags) and left the rest to the kernel; they, a
  * value a reader does not know, and no block at all leave the choice to the
- * system, which may probe for itself.  LR and HR were added without a
- * version change: the field, the layout and every length are version 3's.
+ * system, which may probe for itself.  LC means a card answered the ID
+ * probe; the system finds and drives it itself.  LR, HR and LC were added
+ * without a version change: the field, the layout and every length are
+ * version 3's.
  */
 #define	BI_CON_ANY	0	/* the loader said nothing: the system decides */
 #define	BI_CON_SER	1	/* serial line (the SCC console) */
 #define	BI_CON_VID	2	/* a video board; the system picks hi/lo res */
 #define	BI_CON_LR	3	/* low-res: the text framebuffer at phys 0x370000 */
 #define	BI_CON_HR	4	/* hi-res: the bitmap at phys 0x3E0000 */
+#define	BI_CON_LC	5	/* an ID-probed card (8563); the system probes it */
 
 /*
  * bi_serial -- WHICH SERIAL CHANNELS ARE FITTED, one bit each.  This is the

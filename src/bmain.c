@@ -431,9 +431,11 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 	cfgmem(MM_SEG(mw(rc + ROMC_BRAM)), MM_SEG(mw(rc + ROMC_ERAM)),
 		rc[ROMC_HIRES] != 0);
 	/* Fill down to what this kernel declared, never up to what this loader
-	 * knows. */
+	 * knows.  Under LC this loader is still on the serial line, so channel
+	 * A is not probed. */
 	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags, con,
-		    sccprobe(con == BI_CON_SER)) & BIU_FLAGS) != 0
+		    sccprobe(con == BI_CON_SER || con == BI_CON_LC))
+		    & BIU_FLAGS) != 0
 	    && oslist[k].bflags != 0)
 		puts("kboot: kernel too old for boot flags\n");
 	ldirb((unsigned long)&bi, (unsigned long)p, klen);

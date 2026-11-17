@@ -7,8 +7,9 @@
  * handoff is told what these probes find, in the order COHERENT's md.s
  * vidsel (1124-1138) and the boot ROM's own memory test use: the hi-res
  * bitmap at phys 0x3E0000, then the low-res text framebuffer at phys
- * 0x370000, and the serial line when neither answers.  Serial is the answer
- * that is never unusable, so a missing card, and every doubt, ends there.
+ * 0x370000, then the ID-probed I/O cards, and the serial line when none
+ * answers.  Serial is the answer that is never unusable, so a missing card,
+ * and every doubt, ends there.
  *
  * The test is md.s vprobe's (1146-1170): save a word, write 0x55AA and read
  * it back, then 0xAA55, and restore the word.  ONE ADDITION, for the reason
@@ -29,6 +30,7 @@
  * the segments it uses.
  */
 #include <bootinfo.h>
+#include "romabi.h"
 #include "kboot.h"
 
 #define VSEG	0x25
@@ -65,13 +67,94 @@ vidthere(page) unsigned page;
 	return (r);
 }
 
-/* The console to hand over for an entry that lets the cards decide. */
+#define LCADDR	0x0181		/* 8563 address register / status */
+#define LCDATA	0x0183		/* 8563 data register */
+#define LCREADY	0x80		/* status: register access may proceed */
+#define LCWAIT	1000
+
+static int
+inbyte(p) unsigned p;
+{
+	return (inb(p) & 0xff);
+}
+
+/*
+ * Write `v' to 8563 register `r' unless it is negative, then return what `r'
+ * reads, or -1 if the chip never says ready.
+ */
+static int
+lcreg(r, v) int r, v;
+{
+	int i;
+
+	for (;;) {
+		outb(LCADDR, r);
+		for (i = LCWAIT; (inbyte(LCADDR) & LCREADY) == 0; )
+			if (--i == 0)
+				return (-1);
+		if (v < 0)
+			return (inbyte(LCDATA));
+		outb(LCDATA, v);
+		v = -1;
+	}
+}
+
+/*
+ * R18/R19, the update address, must hold what is written.  The last two
+ * pairs put back what was found.
+ */
+static unsigned char lcpat[] = {
+	18, 0x5a, 19, 0xa5, 18, 0xa5, 19, 0x5a, 18, 0, 19, 0
+};
+
+static int
+lcverify()
+{
+	int i, r;
+
+	lcpat[9] = lcreg(18, -1);
+	lcpat[11] = lcreg(19, -1);
+	r = 1;
+	for (i = 0; i < sizeof (lcpat); i += 2)
+		if (lcreg(lcpat[i], lcpat[i + 1]) != lcpat[i + 1])
+			r = 0;
+	return (r);
+}
+
+/* Cards that answer a fixed ID byte at an I/O port. */
+static struct vcard {
+	unsigned	idport;
+	int		id;
+	int		(*verify)();
+	unsigned	con;
+} vcards[] = {
+	{ 0x01ff, 0xc1, lcverify, BI_CON_LC },	/* 8563, 64 KB */
+};
+#define NVCARD	(sizeof (vcards) / sizeof (vcards[0]))
+
+/*
+ * The console to hand over for an entry that lets the cards decide.  Each ID
+ * read follows a write of some other byte to the port, so a bus that echoes
+ * the last cycle, or floats high or low, cannot pass.
+ */
 unsigned
 vidprobe()
 {
+	register struct vcard *c;
+	int i;
+
 	if (vidthere(HRPAGE))
 		return (BI_CON_HR);
 	if (vidthere(LRPAGE))
 		return (BI_CON_LR);
+	for (c = vcards; c < &vcards[NVCARD]; c++) {
+		for (i = 0; i < 2; i++) {
+			outb(c->idport, c->id ^ (i ? 0x55 : 0xff));
+			if (inbyte(c->idport) != c->id)
+				break;
+		}
+		if (i == 2 && (*c->verify)())
+			return (c->con);
+	}
 	return (BI_CON_SER);
 }

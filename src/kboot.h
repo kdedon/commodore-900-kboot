@@ -112,7 +112,7 @@ extern int				sccthere();
 extern unsigned			sccprobe();
 
 /* --- vid.c ---------------------------------------------------------------- */
-/* The console the framebuffers answer for: BI_CON_HR, BI_CON_LR, or
+/* The console the cards answer for: BI_CON_HR, BI_CON_LR, BI_CON_LC, or
  * BI_CON_SER when no card does.  Leaves every word it probed as it was. */
 extern unsigned			vidprobe();
 

@@ -7,11 +7,12 @@
  * bus here -- pulled up, pulled down, still holding the last word driven onto
  * it, a device answering one constant, and a page whose offset 2 aliases
  * offset 0 -- must come out BI_CON_SER, and real RAM must be found and left
- * holding exactly what it held.
+ * holding exactly what it held.  The same holds for the ID-probed cards on
+ * the I/O bus, whose 8563 registers must also be left as found.
  *
- * src/vid.c reaches the machine through mapseg() and two word accessors.
- * Supplying those three is the whole substitution: the file under test is the
- * shipped one.
+ * src/vid.c reaches the machine through mapseg(), two word accessors and the
+ * ROM's inb/outb.  Supplying those is the whole substitution: the file under
+ * test is the shipped one.
  */
 #include <stdio.h>
 #include <string.h>
@@ -19,6 +20,12 @@
 static unsigned	vget();
 static void		vput();
 static void		fakemap();
+static int		busin();
+static void		busout();
+
+#define ROMABI_H		/* the fake I/O bus below stands in for the ROM */
+#define inb(p)		busin((unsigned)(p))
+#define outb(p, v)	busout((unsigned)(p), (int)(v))
 
 #define VGET(o)			vget(o)
 #define VPUT(o, v)		vput(o, (unsigned)(v))
@@ -36,6 +43,14 @@ static void		fakemap();
 #define M_CONST	4	/* something answering 0x55aa to everything */
 #define M_ALIAS	5	/* RAM decoded to one word: offset 2 is offset 0 */
 
+#define IO_HIGH		0	/* nothing: reads 0xff */
+#define IO_LOW		1	/* nothing: reads 0x00 */
+#define IO_ECHO		2	/* nothing: the bus holds the last byte */
+#define IO_LC		3	/* the 64 KB card: ID 0xc1 and a working 8563 */
+#define IO_IDONLY	4	/* 0xc1 at the ID port, nothing behind it */
+#define IO_BUSY		5	/* the card, but the 8563 never says ready */
+#define IO_OTHERID	6	/* a working 8563 behind an ID not in the table */
+
 #define P_HR	0
 #define P_LR	1
 
@@ -46,6 +61,57 @@ static int		nmap[2];
 static int		badmap;		/* a segment or attribute not the probe's */
 static unsigned	lastbus;
 static int		fails;
+
+static int		iokind;
+static int		lastio;
+static int		nio;
+static int		vreg[64];
+static int		vsel;
+
+static int
+chip()
+{
+	return (iokind == IO_LC || iokind == IO_BUSY || iokind == IO_OTHERID);
+}
+
+static int
+floating()
+{
+	switch (iokind) {
+	case IO_LOW:	return (0);
+	case IO_ECHO:	return (lastio);
+	}
+	return (0xff);
+}
+
+static int
+busin(port) unsigned port;
+{
+	nio++;
+	if (port == 0x01ff) {
+		switch (iokind) {
+		case IO_LC: case IO_IDONLY: case IO_BUSY:	return (0xc1);
+		case IO_OTHERID:				return (0xc3);
+		}
+	} else if (port == 0x0181 && chip())
+		return (iokind == IO_BUSY ? 0x01 : 0x81);
+	else if (port == 0x0183 && chip())
+		return (vreg[vsel]);
+	return (floating());
+}
+
+static void
+busout(port, v) unsigned port; int v;
+{
+	nio++;
+	lastio = v & 0xff;
+	if (!chip())
+		return;
+	if (port == 0x0181)
+		vsel = v & 0x3f;
+	else if (port == 0x0183)
+		vreg[vsel] = v & 0xff;
+}
 
 static void
 fakemap(seg, pg, attr) int seg, attr; unsigned pg;
@@ -87,7 +153,7 @@ vput(o, v) int o; unsigned v;
 }
 
 static void
-run(what, hr, lr, want) char *what; int hr, lr; unsigned want;
+run(what, hr, lr, io, want) char *what; int hr, lr, io; unsigned want;
 {
 	unsigned got;
 	int p;
@@ -101,6 +167,11 @@ run(what, hr, lr, want) char *what; int hr, lr; unsigned want;
 	}
 	badmap = 0;
 	lastbus = 0xffff;
+	iokind = io;
+	lastio = 0xff;
+	nio = 0;
+	vreg[18] = 0x12;
+	vreg[19] = 0x34;
 	got = vidprobe();
 	if (got != want) {
 		printf("  FAIL %-40s got %u want %u\n", what, got, want);
@@ -117,6 +188,15 @@ run(what, hr, lr, want) char *what; int hr, lr; unsigned want;
 				p == P_HR ? "HR" : "LR");
 			fails++;
 		}
+	if (chip() && (vreg[18] != 0x12 || vreg[19] != 0x34)) {
+		printf("  FAIL %-40s left the 8563 address changed\n", what);
+		fails++;
+	}
+	if ((want == BI_CON_HR || want == BI_CON_LR) && nio != 0) {
+		printf("  FAIL %-40s probed I/O after a framebuffer answered\n",
+			what);
+		fails++;
+	}
 	if (want == BI_CON_HR && nmap[P_LR] != 0) {
 		printf("  FAIL %-40s probed LR after HR answered\n", what);
 		fails++;
@@ -127,15 +207,24 @@ int
 main()
 {
 	printf("vidtest: the framebuffer probe\n");
-	run("no card, pulled up", M_HIGH, M_HIGH, BI_CON_SER);
-	run("no card, pulled down", M_LOW, M_LOW, BI_CON_SER);
-	run("no card, bus echoes the last word", M_ECHO, M_ECHO, BI_CON_SER);
-	run("a constant answer", M_CONST, M_CONST, BI_CON_SER);
-	run("one word aliased at offset 2", M_ALIAS, M_ALIAS, BI_CON_SER);
-	run("hi-res card", M_RAM, M_HIGH, BI_CON_HR);
-	run("low-res card", M_HIGH, M_RAM, BI_CON_LR);
-	run("low-res card behind an echoing HR page", M_ECHO, M_RAM, BI_CON_LR);
-	run("both answer: hi-res first", M_RAM, M_RAM, BI_CON_HR);
+	run("no card, pulled up", M_HIGH, M_HIGH, IO_HIGH, BI_CON_SER);
+	run("no card, pulled down", M_LOW, M_LOW, IO_HIGH, BI_CON_SER);
+	run("no card, bus echoes the last word", M_ECHO, M_ECHO, IO_HIGH, BI_CON_SER);
+	run("a constant answer", M_CONST, M_CONST, IO_HIGH, BI_CON_SER);
+	run("one word aliased at offset 2", M_ALIAS, M_ALIAS, IO_HIGH, BI_CON_SER);
+	run("hi-res card", M_RAM, M_HIGH, IO_HIGH, BI_CON_HR);
+	run("low-res card", M_HIGH, M_RAM, IO_HIGH, BI_CON_LR);
+	run("low-res card behind an echoing HR page", M_ECHO, M_RAM, IO_HIGH, BI_CON_LR);
+	run("both answer: hi-res first", M_RAM, M_RAM, IO_HIGH, BI_CON_HR);
+	run("LC: ID bus floats low", M_HIGH, M_HIGH, IO_LOW, BI_CON_SER);
+	run("LC: ID bus echoes the last byte", M_HIGH, M_HIGH, IO_ECHO, BI_CON_SER);
+	run("LC: ID with no 8563 behind it", M_HIGH, M_HIGH, IO_IDONLY, BI_CON_SER);
+	run("LC: 8563 never ready", M_HIGH, M_HIGH, IO_BUSY, BI_CON_SER);
+	run("LC: unknown ID", M_HIGH, M_HIGH, IO_OTHERID, BI_CON_SER);
+	run("LC card", M_HIGH, M_HIGH, IO_LC, BI_CON_LC);
+	run("LC card behind an echoing bus", M_ECHO, M_ECHO, IO_LC, BI_CON_LC);
+	run("LC card and hi-res: hi-res first", M_RAM, M_HIGH, IO_LC, BI_CON_HR);
+	run("LC card and low-res: low-res first", M_HIGH, M_RAM, IO_LC, BI_CON_LR);
 	if (fails)
 		printf("vidtest: %d FAILED\n", fails);
 	else
