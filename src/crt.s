@@ -133,8 +133,9 @@ setdoff_:
 
 / setgeom_(long cmdfar, long parmfar) -- issue WDSDP, as the kernel's
 / wdsetparam() does: copy the 16-byte command block to WDCMDBLKPADDR and the
-/ 6-byte parameter block to WDBUFPADDR, then strobe WDIO.  The args are far
-/ pointers into the loader's data.
+/ 6-byte parameter block to WDBUFPADDR, then tail-call the ROM's wdgo to
+/ strobe WDIO and wait for the status.  A read issued before that status
+/ lands takes it as its own.  The args are far pointers into the loader's data.
 	.globl	setgeom_
 setgeom_:
 	/ map seg 0x24 -> phys 0x080000, attr 0x02 (SYS, writable)
@@ -158,11 +159,11 @@ setgeom_:
 	ldl	rr4, $0x24000400	/ dst = WDBUFPADDR
 	ld	r6, $6
 	ldirb	@rr4, @rr2, r6
-	/ strobe the DMA/command line
-	ld	r1, $0x0500			/ WDIO
-	ld	r0, $1
-	out	(r1), r0
-	ret
+	/ wdgo(cmd) returns straight to our caller
+	ldl	rr2, $0x24000000
+	ldl	rr14(4), rr2
+	ldl	rr4, $0x111e		/ ROM_WDGO
+	jp	@rr4
 
 / mapseg_(seg, basepage, attr) -- program one Z8010 descriptor.
 / basepage = phys>>8 (e.g. 0x0800 for phys 0x080000); attr per mmu.go bits.
