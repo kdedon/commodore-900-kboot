@@ -177,6 +177,16 @@ mutate: kbdmutate | $(OUT)
 	if $(OUT)/m27 >/dev/null 2>&1; then \
 		echo "MUTATE FAIL: cfgtest passed a map with the framebuffers still in it"; fail=1; \
 	else echo "mutate ok: a reserved segment left in the map is caught"; fi; \
+	sed 's/return (sum == 0 ? rc : (char \*)0);/return (rc);/' ../src/cfg.c > $(OUT)/m28.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m28 cfgtest.c $(OUT)/m28.c 2>/dev/null; \
+	if $(OUT)/m28 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: cfgtest passed a ROM description with a bad sum"; fail=1; \
+	else echo "mutate ok: a ROM description with a bad sum is caught"; fi; \
+	sed 's/if (rc\[RC_BADSEG + (s >> 3)\] \& 1 << (s \& 7))/if (0)/' ../src/cfg.c > $(OUT)/m29.c; \
+	$(HCC) $(HFLAGS) -o $(OUT)/m29 cfgtest.c $(OUT)/m29.c 2>/dev/null; \
+	if $(OUT)/m29 >/dev/null 2>&1; then \
+		echo "MUTATE FAIL: cfgtest passed a map with a bad segment in it"; fail=1; \
+	else echo "mutate ok: a bad segment left in the map is caught"; fi; \
 	sed 's/oslist\[owner\].badflg |= BADCON;/;/' ../src/cfg.c > $(OUT)/m24.c; \
 	$(HCC) $(HFLAGS) -o $(OUT)/m24 cfgtest.c $(OUT)/m24.c 2>/dev/null; \
 	if $(OUT)/m24 >/dev/null 2>&1; then \

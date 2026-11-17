@@ -10,6 +10,7 @@
  */
 #include "kboot.h"
 #include <bootinfo.h>
+#include "romabi.h"
 #include <memmap.h>
 
 char			cfg[CFGMAX];			/* kboot.cfg text */
@@ -444,9 +445,11 @@ cfglayout(k) int k;
 
 /*
  * Build the memory map bi.bi_ram/bi_nram: the segments [bot, top) the ROM's
- * memory test answered for, less the built-in reserved table, less the
- * `reserve' lines, with `memtop' applied.  `hires' says an HR board is fitted,
- * which is what decides whether segment 0x3e is bitmap or ordinary RAM.
+ * memory test answered for, or the RAM runs of its machine description `rc'
+ * less its bad segments and its own, then less the built-in reserved table
+ * and the `reserve' lines, with `memtop' applied.  `hires' says an HR board
+ * is fitted, which is what decides whether segment 0x3e is bitmap or
+ * ordinary RAM.
  *
  * One bit of working space per segment, then the runs are read off it.  That
  * is longer than differencing intervals and it cannot get the overlaps wrong,
@@ -465,17 +468,61 @@ mmcut(rp, hires) register struct memres *rp; int hires;
 		mmseg[s] = 0;
 }
 
-cfgmem(bot, top, hires) unsigned bot, top; int hires;
+/* A word of the ROM's block, at an even offset. */
+#define RCW(rc, off)	(*(unsigned short *)((rc) + (off)))
+
+/* `rc' if the ROM's block carries a sound machine description, else 0. */
+char *
+rcfind(rc) register char *rc;
+{
+	register unsigned n, i;
+	unsigned short sum;
+
+	n = RCW(rc, RC_LEN);
+	if (RCW(rc, RC_MAGIC) != 0x4339 || RCW(rc, RC_MAGIC + 2) != 0x5243
+	    || RCW(rc, RC_VERS) == 0 || n < RC_LEN1 || n > 0x1000 || (n & 1))
+		return ((char *)0);
+	sum = 0;
+	for (i = RC_MAGIC; i < n; i += 2)
+		sum += RCW(rc, i);
+	return (sum == 0 ? rc : (char *)0);
+}
+
+/* Is segment `s' RAM by the description: in a run and not bad?  The ROM's
+ * own segment counts: the kernel takes it over once it stops calling the ROM. */
+static
+rcram(rc, s) register char *rc; register unsigned s;
+{
+	register char *p;
+	unsigned n;
+
+	if (rc[RC_BADSEG + (s >> 3)] & 1 << (s & 7))
+		return (0);
+	n = RCW(rc, RC_NRAM);
+	if (n > RC_NRUN)
+		n = RC_NRUN;
+	for (p = rc + RC_RAM; n-- > 0; p += 2)
+		if (s - (p[0] & 0xff) < (unsigned)(p[1] & 0xff))
+			return (1);
+	return (0);
+}
+
+cfgmem(bot, top, hires, rc) unsigned bot, top; int hires; char *rc;
 {
 	register int s;
 	int i, first;
 
+	if (rc) {
+		bot = 0;
+		top = MM_NSEG;
+	}
 	if (cfgtop >= 0 && (unsigned)cfgtop + 1 < top)
 		top = (unsigned)cfgtop + 1;
 	if (top > MM_NSEG)
 		top = MM_NSEG;
 	for (s = 0; s < MM_NSEG; s++)
-		mmseg[s] = (unsigned)s >= bot && (unsigned)s < top;
+		mmseg[s] = (unsigned)s >= bot && (unsigned)s < top
+			&& (rc == 0 || rcram(rc, (unsigned)s));
 	for (i = 0; i < MM_NRES; i++)
 		mmcut(&mmres[i], hires);
 	for (i = 0; i < ncfgres; i++)

@@ -16,6 +16,7 @@
 #include "../src/kboot.h"
 #include <bootinfo.h>
 #include <memmap.h>
+#include "../src/romabi.h"
 
 /* The shipped sample, as reached from tests/.  The makefile names it. */
 #ifndef CFGSAMPLE
@@ -715,7 +716,7 @@ t_memmap()
 	/* An HR machine: the text RAM at 0x37 is a hole in the middle, and the
 	 * bitmap plus the ROM's own segment close the top. */
 	parse("geom 704 7 17 352\nos a 136 coherent part\n");
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("a hole in the middle gives two runs", bi.bi_nram, 2);
 	OK("the first run starts above the ROM", bi.bi_ram[0].br_first, 0x08);
 	OK("and stops below the text RAM", bi.bi_ram[0].br_count, 0x37 - 0x08);
@@ -725,7 +726,7 @@ t_memmap()
 
 	/* No HR board: 0x3e is ordinary RAM, and 0x3f is still out because the
 	 * ROM keeps it for itself. */
-	cfgmem(ROMBOT, ROMTOP, 0);
+	cfgmem(ROMBOT, ROMTOP, 0, (char *)0);
 	OK("without a bitmap, still two runs", bi.bi_nram, 2);
 	OK("the second run reaches 0x3e", bi.bi_ram[1].br_count, 0x3f - 0x38);
 
@@ -733,7 +734,7 @@ t_memmap()
 	 * the run it falls in. */
 	parse("reserve 0x20 0x21\nos a 136 coherent part\n");
 	OK("the line was kept", ncfgres, 1);
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("reserve splits a run in two", bi.bi_nram, 3);
 	OK("the run below it", bi.bi_ram[0].br_count, 0x20 - 0x08);
 	OK("the run above it", bi.bi_ram[1].br_first, 0x22);
@@ -743,31 +744,31 @@ t_memmap()
 	/* `memtop' lowers the top: everything above it goes, holes and all. */
 	parse("memtop 0x1f\nos a 136 coherent part\n");
 	OK("the segment was read", cfgtop, 0x1f);
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("memtop lowering leaves one run", bi.bi_nram, 1);
 	OK("which ends where it said", bi.bi_ram[0].br_count, 0x20 - 0x08);
 
 	/* Decimal is the same number written another way. */
 	parse("memtop 31\nos a 136 coherent part\n");
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("decimal reads as the same segment", bi.bi_ram[0].br_count,
 	   0x20 - 0x08);
 
 	/* ABOVE the ROM's top it is IGNORED.  Memory that did not answer the
 	 * memory test is not there because a config file says it is. */
 	parse("memtop 0xff\nos a 136 coherent part\n");
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("memtop above the ROM's top is ignored", bi.bi_nram, 2);
 	OK("the top run is the ROM's", bi.bi_ram[1].br_count, 0x3e - 0x38);
 	parse("memtop 0x3f\nos a 136 coherent part\n");
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("naming the ROM's own top changes nothing",
 	   bi.bi_ram[1].br_count, 0x3e - 0x38);
 
 	/* A machine whose memory stops below the framebuffers has one run and
 	 * no hole: the map is what was found, not what could be fitted. */
 	parse("os a 136 coherent part\n");
-	cfgmem(ROMBOT, MM_SEG(0x0800), 1);
+	cfgmem(ROMBOT, MM_SEG(0x0800), 1, (char *)0);
 	OK("2 MB is one run", bi.bi_nram, 1);
 	OK("of everything above the ROM", bi.bi_ram[0].br_count, 0x20 - 0x08);
 
@@ -775,7 +776,7 @@ t_memmap()
 	parse("reserve 0x21 0x20\nreserve 0x20\nreserve 0x20 0x100\n"
 	      "os a 136 coherent part\n");
 	OK("a reversed, short or too-high range is dropped", ncfgres, 0);
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("so the map is the built-in one", bi.bi_nram, 2);
 	OK("with nothing taken out of it", bi.bi_ram[0].br_count, 0x37 - 0x08);
 
@@ -785,7 +786,7 @@ t_memmap()
 	      "reserve 0x1c 0x1c\nreserve 0x24 0x24\n"
 	      "os a 136 coherent part\n");
 	OK("lines past CFGRES are dropped", ncfgres, CFGRES);
-	cfgmem(ROMBOT, ROMTOP, 1);
+	cfgmem(ROMBOT, ROMTOP, 1, (char *)0);
 	OK("four splits and the built-in hole", bi.bi_nram, 6);
 	OK("every run fits the block's slots", bi.bi_nram <= BI_NRAM, 1);
 	OK("the last is still the top one", bi.bi_ram[5].br_first, 0x38);
@@ -795,6 +796,101 @@ t_memmap()
 	parse("os a 136 coherent part\n");
 	OK("no memtop line", cfgtop, -1);
 	OK("no reserve lines", ncfgres, 0);
+}
+
+/* A romconf block with a machine description, as the 64 KB ROM writes it. */
+static unsigned short	rcbw[RC_LEN1 / 2];	/* for the alignment */
+#define rcb	((char *)rcbw)
+
+static void
+rcput(off, v) int off; unsigned v;
+{
+	rcbw[off / 2] = (unsigned short)v;
+}
+
+static void
+rcseal()
+{
+	unsigned sum;
+	int i;
+
+	rcput(RC_LEN1 - 2, 0);
+	sum = 0;
+	for (i = RC_MAGIC; i < RC_LEN1; i += 2)
+		sum += rcbw[i / 2];
+	rcput(RC_LEN1 - 2, -sum);
+}
+
+static void
+t_romdesc()
+{
+	printf("the ROM's machine description\n");
+	memset(rcbw, 0, sizeof rcbw);
+	rcput(RC_MAGIC, 0x4339);	/* "C9RC" */
+	rcput(RC_MAGIC + 2, 0x5243);
+	rcput(RC_VERS, 1);
+	rcput(RC_LEN, RC_LEN1);
+	rcput(RC_NRAM, 2);
+	rcb[RC_RAM] = 0x08;		/* 0x08-0x17 */
+	rcb[RC_RAM + 1] = 16;
+	rcb[RC_RAM + 2] = (char)0x30;	/* 0x30-0x3f: the holes still go */
+	rcb[RC_RAM + 3] = 16;
+	rcb[RC_RAM + 4] = 0x20;		/* past rc_nram: not RAM */
+	rcb[RC_RAM + 5] = 4;
+	rcb[RC_BADSEG + 1] |= 1 << 2;	/* seg 0x0a */
+	rcb[RC_RSVD] = 0x17;
+	rcb[RC_RSVD + 1] = 1;
+	rcseal();
+	OK("a sealed block is found", rcfind(rcb) == rcb, 1);
+
+	parse("os a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1, rcb);
+	OK("runs, a bad segment and the holes", bi.bi_nram, 4);
+	OK("the first stops at the bad segment", bi.bi_ram[0].br_count, 2);
+	OK("the next starts past it", bi.bi_ram[1].br_first, 0x0b);
+	OK("and keeps the ROM's own", bi.bi_ram[1].br_count, 0x18 - 0x0b);
+	OK("the second run, below the text RAM", bi.bi_ram[2].br_first, 0x30);
+	OK("above it, up to the bitmap", bi.bi_ram[3].br_count, 0x3e - 0x38);
+
+	parse("memtop 0x0f\nos a 136 coherent part\n");
+	cfgmem(ROMBOT, ROMTOP, 1, rcb);
+	OK("memtop still cuts", bi.bi_nram, 2);
+	OK("at the segment named", bi.bi_ram[1].br_count, 0x10 - 0x0b);
+
+	/* RAM above the holes, as the ROM reports 08-fe: the runs come
+	 * through, the ROM's own segment included, and the 4 MB limit is gone. */
+	rcput(RC_NRAM, 3);
+	rcb[RC_RAM] = 0x08;
+	rcb[RC_RAM + 1] = 47;
+	rcb[RC_RAM + 2] = 0x38;
+	rcb[RC_RAM + 3] = 6;
+	rcb[RC_RAM + 4] = 0x40;
+	rcb[RC_RAM + 5] = (char)191;
+	rcb[RC_BADSEG + 1] = 0;
+	rcb[RC_RSVD] = 0x36;
+	rcseal();
+	parse("os a 136 coherent part\n");
+	cfgmem(ROMBOT, MM_SEG(0x0dc0), 1, rcfind(rcb));
+	OK("three runs", bi.bi_nram, 3);
+	OK("the first whole", bi.bi_ram[0].br_count, 47);
+	OK("the second between the holes", bi.bi_ram[1].br_first, 0x38);
+	OK("of six", bi.bi_ram[1].br_count, 6);
+	OK("the third above 4 MB", bi.bi_ram[2].br_first, 0x40);
+	OK("to the top", bi.bi_ram[2].br_count, 191);
+
+	rcb[RC_RAM + 1] = 48;
+	OK("a bad sum is refused", rcfind(rcb) == (char *)0, 1);
+	rcseal();
+	rcput(RC_LEN, RC_LEN1 - 2);
+	OK("a short length is refused", rcfind(rcb) == (char *)0, 1);
+	rcput(RC_LEN, RC_LEN1);
+	rcseal();
+	rcput(RC_MAGIC + 2, 0x5244);
+	OK("a wrong magic is refused", rcfind(rcb) == (char *)0, 1);
+	rcput(RC_MAGIC + 2, 0x5243);
+	rcput(RC_VERS, 0);
+	rcseal();
+	OK("version 0 is refused", rcfind(rcb) == (char *)0, 1);
 }
 
 int
@@ -812,6 +908,7 @@ main()
 	t_console();
 	t_sample();
 	t_memmap();
+	t_romdesc();
 	if (fails)
 		printf("cfgtest: %d FAILED\n", fails);
 	else

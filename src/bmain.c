@@ -378,10 +378,11 @@ loadcfg()
 static char *
 bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 {
-	unsigned off, lim, kver, klen, con;
+	unsigned off, lim, kver, klen, con, ser;
 	register char *p;
 	register int i;
-	char *rc;
+	char *rc, *c9;
+	int hr;
 
 	/* Bound the scan by the SMALLEST block any kernel may carry, so a
 	 * block in the last bytes of the data segment is still found. */
@@ -425,16 +426,19 @@ bifill(dseg, dlen, k) unsigned dseg; unsigned dlen; int k;
 	 * loader's own menu went, which is not the system's console. */
 	con = oslist[k].conser ? BI_CON_SER : vidprobe();
 	/* The memory map, over whatever the kernel's own block declared: the
-	 * ROM's rom_bram/rom_eram range less the segments no system may
-	 * allocate.  In clicks in the ROM's block, in segments here. */
+	 * ROM's RAM runs, or its rom_bram/rom_eram range, less the segments no
+	 * system may allocate.  In clicks in the ROM's block, in segments here. */
 	rc = *(char **)ROMV_CONFP;
-	cfgmem(MM_SEG(mw(rc + ROMC_BRAM)), MM_SEG(mw(rc + ROMC_ERAM)),
-		rc[ROMC_HIRES] != 0);
+	c9 = rcfind(rc);
+	hr = rc[ROMC_HIRES] != 0 || (c9 && (rc[RC_VIDEO + 1] & RV_HR));
+	cfgmem(MM_SEG(mw(rc + ROMC_BRAM)), MM_SEG(mw(rc + ROMC_ERAM)), hr, c9);
 	/* Fill down to what this kernel declared, never up to what this loader
 	 * knows.  Under LC this loader is still on the serial line, so channel
-	 * A is not probed. */
-	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags, con,
-		    sccprobe(con == BI_CON_SER || con == BI_CON_LC))
+	 * A is not probed.  The ROM may know of channels the probe skips. */
+	ser = sccprobe(con == BI_CON_SER || con == BI_CON_LC);
+	if (c9)
+		ser |= mw(rc + RC_SERIAL) & ((1 << BI_NSERIAL) - 1);
+	if ((bipack(&bi, kver, klen, (unsigned)oslist[k].bflags, con, ser)
 		    & BIU_FLAGS) != 0
 	    && oslist[k].bflags != 0)
 		puts("kboot: kernel too old for boot flags\n");

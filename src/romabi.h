@@ -111,6 +111,22 @@ extern char		*romvar[NRV];
 #define ROMC_CTYPE		14
 #define ROMC_HIRES		15
 
+/* A 64 KB ROM's block goes on past the 16 bytes above with a machine
+ * description: "C9RC", version, length, and from offset 16 to the length the
+ * words sum to 0.  A zero field is one the ROM did not fill. */
+#define RC_MAGIC	16
+#define RC_VERS		20
+#define RC_LEN		22
+#define RC_VIDEO	26		/* RV_HR: an HR board is fitted */
+#define RC_SERIAL	34		/* bi_serial's bits */
+#define RC_NRAM		36
+#define RC_RAM		38		/* RC_NRUN pairs of first seg, count */
+#define RC_BADSEG	70		/* bit s&7 of byte s>>3: seg s failed */
+#define RC_RSVD		114		/* first seg the ROM keeps, count */
+#define RC_LEN1		120		/* version 1's length */
+#define RC_NRUN		16
+#define RV_HR		0x0002
+
 /* Callable aliases: a segmented indirect call through a far function pointer
  * (segment 0 : offset) reaches the ROM and returns.  crt.s reads romsv[] and
  * romvar[] itself. */

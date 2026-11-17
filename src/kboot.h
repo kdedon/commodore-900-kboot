@@ -97,10 +97,13 @@ extern					cfgparse();
 /* Build bi/nparts for entry `k'.  Runs after the menu has chosen, so only the
  * layout that is booted is ever built. */
 extern					cfglayout();
-/* Build bi's memory map from the ROM's segment range [bot, top), the built-in
+/* Build bi's memory map from the ROM's segment range [bot, top), or from the
+ * runs of its machine description `rc' when that is not 0, the built-in
  * reserved table and the `reserve' and `memtop' lines.  `hires' says an HR
  * board is fitted. */
 extern					cfgmem();
+/* The ROM's romconf block if it carries a sound machine description, else 0. */
+extern char				*rcfind();
 
 /* --- scc.c ---------------------------------------------------------------- */
 /* Is a Z8030 channel based at this I/O address really there?  Writes a pattern
